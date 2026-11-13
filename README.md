@@ -9,12 +9,13 @@ React/Vite frontend, Firebase Authentication and Firestore, and an Express serve
 3. Deploy `firestore.rules` to the **named Firestore database** in that configuration, not just the default database.
 4. Rotate or revoke any Gemini key previously shipped in the browser. Set a new `GEMINI_API_KEY` in server secrets (or local .env).
 5. Run `npm run dev` (Express with Vite middleware; port 3000 by default).
-6. Run `npm run lint` and `npm run build`. For production run `npm start` and deploy the Node server over HTTPS; static-only hosting will not support the scanner. Never expose the development server publicly.
+6. Give the Node server Application Default Credentials with Firestore read/write permissions (e.g. a Cloud Run runtime service account with Cloud Datastore User in this Firebase project). For local development use ADC via gcloud or a local credential file outside the repo. Never put a service account key in the client or GitHub.
+7. Run `npm run lint` and `npm run build`. For production run `npm start` and deploy the Node server over HTTPS; static-only hosting will not support the scanner. Never expose the development server publicly.
 
 ## Access model
 
-Anonymous Firebase authentication provides a browser-specific identity. Hosts create a random 32-character private room code. Guests paste it to acquire read-only membership. Only the host can edit financial records, advance phases, or scan with Gemini. Table settings lock after setup.
+Anonymous Firebase authentication provides a browser-specific identity. Hosts create a six-digit room code or share an invitation link. A protected backend allocates short codes and maps them to internal random 32-character IDs; guests redeem codes for read-only membership. The browser saves the Firebase identity and current room ID locally and reloads the same room and ledger after refresh. Only the host can edit financial records, advance phases, or scan with Gemini. Table settings lock after setup.
 
-Old four-digit rooms and old local host IDs are intentionally denied. Export/backup old sessions before deployment. If a host clears storage or changes devices, the anonymous identity may be lost. Never share codes publicly.
+Old four-digit rooms, old local host IDs, and rooms created under the intermediate 32-character invitation scheme are not migrated. Export/backup old sessions before deployment. If a host clears storage or changes devices, the anonymous identity may be lost. Never share codes publicly.
 
 See [security checks](docs/security-checks.md) and [ledger regression checks](docs/ledger-regression-checks.md).
