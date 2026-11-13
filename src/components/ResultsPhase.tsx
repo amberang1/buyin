@@ -2,8 +2,8 @@ import React from 'react';
 import { CheckCircle2, Share2, AlertTriangle, Spade } from 'lucide-react';
 import { Player } from '../types';
 import { balance, reconciliation, money } from '../ledger.mjs';
-type Props = { players:Player[]; onArchive:()=>void };
-export default function ResultsPhase({players,onArchive}:Props){
+type Props = { players:Player[]; onArchive:()=>void; archiveLabel?:string };
+export default function ResultsPhase({players,onArchive,archiveLabel="Archive & return home"}:Props){
   const rows=players.map(p=>({...p,...balance(p)}));
   const {totalIn,totalOut,difference}=reconciliation(players);
   const balanced=difference===0;
@@ -28,6 +28,7 @@ export default function ResultsPhase({players,onArchive}:Props){
     </div>)}</div>
     <p className="text-xs text-on-surface-variant">These are accounting results, not payment instructions. If buy-ins were paid upfront, each player’s final stack is the remaining amount to return.</p>
     </section>
-    <div className="grid sm:grid-cols-2 gap-3"><button className="club-secondary flex items-center justify-center gap-2" onClick={share}><Share2 size={17}/> Share results</button><button className="club-button" onClick={onArchive}>Archive &amp; return home</button></div>
+    <div className="grid sm:grid-cols-2 gap-3"><button className="club-secondary flex items-center justify-center gap-2" onClick={share}><Share2 size={17}/> Share results</button><button className="club-button" onClick={onArchive}>{archiveLabel}</button></div>
   </div>;
 }
+

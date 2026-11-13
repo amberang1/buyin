@@ -5,6 +5,7 @@ export type Player = {
   name: string;
   buyIns: number[];
   cashOuts: number[];
+  cashOutChipUnits?: number[];
   finalStackValue: number;
   photoUrl?: string;
 };
@@ -14,3 +15,4 @@ export type ExchangeRate = {
   chips: number;
   chipValues: Record<string, number>;
 };
+

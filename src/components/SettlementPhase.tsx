@@ -2,9 +2,10 @@ import React,{useState,useEffect} from 'react';
 import { Camera, Sparkles, Loader2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Player, ExchangeRate } from '../types';
 import { scanChips, prepareChipPhoto } from '../scan';
+import { draftOperation } from '../drafts';
 import ChipCounter from './ChipCounter';
-import { stackTotal, chipCents, money, reconciliation } from '../ledger.mjs';
-type Props={gameId:string;players:Player[];exchangeRate:ExchangeRate;onComplete:(players:Player[])=>Promise<boolean>;onReturnToPlay:()=>void};
+import { stackTotal, chipCents, money, reconciliation, allocateStacks } from '../ledger.mjs';
+type Props={gameId:string;players:Player[];exchangeRate:ExchangeRate;onComplete:(stacks:Record<string,string>,photos:Record<string,string>)=>Promise<boolean>;onReturnToPlay:()=>void};
 type Review={counts:Record<string,number>;warnings:string[]};
 export default function SettlementPhase({gameId,players,exchangeRate,onComplete,onReturnToPlay}:Props){
   const draftKey='poker_stack_draft_'+gameId;
@@ -15,7 +16,10 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete,
   const [errors,setErrors]=useState<Record<string,string>>({});
   const [saving,setSaving]=useState(false);
   const [counterId,setCounterId]=useState<string|null>(null);
-  useEffect(()=>{try{localStorage.setItem(draftKey,JSON.stringify(stacks));}catch{}},[draftKey,stacks]);
+  const [draftReady,setDraftReady]=useState(false);
+  const [draftError,setDraftError]=useState('');
+  useEffect(()=>{let active=true;draftOperation(draftKey,'read').then(value=>{if(active&&value){setStacks(value.stacks||{});setPhotos(value.photos||{});setReviews(value.reviews||{});}}).catch(()=>{if(active)setDraftError('Draft storage is unavailable. Keep this screen open until finalizing.');}).finally(()=>{if(active)setDraftReady(true);});return()=>{active=false;};},[draftKey]);
+  useEffect(()=>{if(draftReady)void draftOperation(draftKey,'write',{stacks,photos,reviews}).catch(()=>setDraftError('Draft could not be saved. Keep this screen open until finalizing.'));},[draftKey,draftReady,stacks,photos,reviews]);
   const setError=(id:string,msg:string)=>setErrors(p=>({...p,[id]:msg}));
   const clearReview=(id:string)=>setReviews(p=>{const n={...p};delete n[id];return n;});
   const upload=async(id:string,file?:File)=>{
@@ -38,13 +42,20 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete,
   };
   const valid=(id:string)=>{try{return typeof stacks[id]==='string'&&stacks[id].trim()!==''&&Number.isFinite(Number(stacks[id]))&&Number(stacks[id])>=0&&Number(stacks[id])<=100000000&&Number.isSafeInteger(chipCents(stacks[id],exchangeRate));}catch{return false}};
   const complete=players.length>0&&players.every(p=>valid(p.id));
-  const next=players.map(p=>({...p,finalStackValue:valid(p.id)?chipCents(stacks[p.id],exchangeRate)/100:0,...(photos[p.id]?{photoUrl:photos[p.id]}:{})}));
+  let next=players.map(p=>({...p,finalStackValue:valid(p.id)?chipCents(stacks[p.id],exchangeRate)/100:0}));
+  let allocationError='';
+  if(complete){try{next=allocateStacks(players,stacks,exchangeRate);}catch(e){allocationError=(e as Error).message;}}
   const {totalIn,totalOut,difference}=reconciliation(next);
-  const blocked=!complete||difference!==0||Object.values(busy).some(Boolean)||Object.keys(reviews).length>0||saving;
-  const submit=async()=>{if(blocked)return;setSaving(true);try{if(await onComplete(next))localStorage.removeItem(draftKey);}finally{setSaving(false);}};
+  const rounding=complete&&!allocationError?next.filter(p=>Math.abs(p.finalStackValue*100-chipCents(stacks[p.id],exchangeRate))>=1):[];
+  const blocked=!draftReady||!complete||!!allocationError||difference!==0||Object.values(busy).some(Boolean)||Object.keys(reviews).length>0||saving;
+  const submit=async()=>{if(blocked)return;setSaving(true);try{if(await onComplete(stacks,photos)){localStorage.removeItem(draftKey);await draftOperation(draftKey,'delete').catch(()=>{});}}finally{setSaving(false);}};
+  if(!draftReady)return <p>Restoring chip counts and photos…</p>;
   return <div className="space-y-5">
+    {draftError&&<p role="alert" className="text-error">{draftError}</p>}
+    {allocationError&&complete&&<p role="alert" className="text-error">{allocationError}</p>}
+    {rounding.length>0&&<p className="text-sm text-primary">Fractional cents allocated to keep payouts balanced: {rounding.map(p=>p.name+' $'+p.finalStackValue.toFixed(2)).join(', ')}. Chip counts are unchanged.</p>}
     <section><p className="club-kicker text-secondary">03 / Count &amp; reconcile</p><h2 className="font-serif text-4xl mt-2">Count the stacks.</h2><p className="text-sm text-on-surface-variant mt-2">Photograph one player’s chips, review the count, or enter the chip value manually. Lay out stacks by color in good light.</p></section>
-    <section className="club-hero p-5 sm:p-7"><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-[#dae5d9]">Accounted for</p><p className="club-money text-3xl font-bold">${money(totalOut)}</p></div><div><p className="text-xs text-[#dae5d9]">Total buy-ins</p><p className="club-money text-3xl font-bold">${money(totalIn)}</p></div></div><div className="mt-4 text-xs flex items-center justify-between border-t border-white/20 pt-4"><span>{players.filter(p=>valid(p.id)).length} / {players.length} stacks entered</span><span>{difference===0?'Balanced':(difference>0?'Remaining $':'Over by $')+money(Math.abs(difference))}</span></div></section>
+    <section className="club-hero p-5 sm:p-7"><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-[#dae5d9]">Accounted for</p><p className="club-money text-3xl font-bold">${money(totalOut)}</p></div><div><p className="text-xs text-[#dae5d9]">Total buy-ins</p><p className="club-money text-3xl font-bold">${money(totalIn)}</p></div></div><div className="mt-4 text-xs flex items-center justify-between border-t border-white/20 pt-4"><span>{players.filter(p=>valid(p.id)).length} / {players.length} stacks entered</span><span>{difference===0&&!allocationError?'Balanced':(difference>0?'Remaining $':'Over by $')+money(Math.abs(difference))}</span></div></section>
     {players.map(p=>{const id=p.id;const review=reviews[id];let total=0;let good=true;if(review){try{total=stackTotal(review.counts,exchangeRate.chipValues);chipCents(total,exchangeRate);}catch{good=false;}}
       return <section key={id} className="club-card p-5 space-y-4">
         <div className="flex justify-between items-center gap-3"><div><h3 className="font-headline font-bold text-lg">{p.name}</h3><p className="text-xs text-on-surface-variant">Buy-ins ${p.buyIns.reduce((a,b)=>a+b,0).toFixed(2)} · Earlier cash-outs ${p.cashOuts.reduce((a,b)=>a+b,0).toFixed(2)}</p></div>{valid(id)&&<CheckCircle2 className="text-primary shrink-0" size={22}/>}</div>
@@ -69,8 +80,9 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete,
         </div>}
       </section>;
     })}
-    {!complete?<p className="text-sm text-on-surface-variant">Enter every final stack, including zero for an empty stack.</p>:difference!==0?<div role="alert" className="club-card p-4 text-error text-sm"><strong>Check the count.</strong> The ledger is off by ${money(Math.abs(difference))}. Correct the stacks before finalizing.</div>:<p className="text-sm text-primary font-bold">All amounts balance. Ready to finalize.</p>}
+    {!complete?<p className="text-sm text-on-surface-variant">Enter every final stack, including zero for an empty stack.</p>:difference!==0||!!allocationError?<div role="alert" className="club-card p-4 text-error text-sm"><strong>Check the count.</strong> The ledger is off by ${money(Math.abs(difference))}. Correct the stacks before finalizing.</div>:<p className="text-sm text-primary font-bold">All amounts balance. Ready to finalize.</p>}
     <button className="club-button w-full" disabled={blocked} onClick={submit}>{saving?'Saving results…':'Finalize ledger'}</button>
     <button className="club-secondary w-full" disabled={saving||Object.values(busy).some(Boolean)} onClick={onReturnToPlay}>Return to play / correct entries</button>
   </div>;
 }
+

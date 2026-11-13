@@ -1,6 +1,6 @@
 export function moneyCents(value) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100000000) throw new Error('Invalid money amount');
-  return Math.round((value + Number.EPSILON) * 100);
+  return Math.round(Number(value.toFixed(8)) * 100 + 1e-6);
 }
 
 export function sumCents(values) { return values.reduce((total, value) => total + moneyCents(value), 0); }
@@ -9,7 +9,7 @@ export function validRate(rate) { return !!rate && Number.isFinite(rate.baseCurr
 
 export function chipsToCents(units, rate) { if (!validRate(rate) || typeof units !== 'number' || !Number.isFinite(units) || units < 0) throw new Error('Invalid chip value or rate'); return moneyCents(units * rate.baseCurrency / rate.chips); }
 
-export function cashToChips(cash, rate) { if (!validRate(rate)) throw new Error('Invalid rate'); return moneyCents(cash) / 100 * rate.chips / rate.baseCurrency; }
+export function cashToChips(cash, rate) { if (!validRate(rate)) throw new Error('Invalid rate'); if (!Number.isFinite(cash) || cash < 0 || !Number.isSafeInteger(Math.round(cash * 100))) throw new Error('Invalid table total'); return Math.round(cash * 100) / 100 * rate.chips / rate.baseCurrency; }
 
 export function chipTotal(counts, denominations) {
   let total = 0;
@@ -65,4 +65,44 @@ export function reconciliation(players) {
   const totalIn = rows.reduce((n,p)=>n+p.inCents,0);
   const totalOut = rows.reduce((n,p)=>n+p.outCents,0);
   return { totalIn, totalOut, difference: totalIn-totalOut };
+}
+
+
+export function validateSettings(rate) {
+  if (!validRate(rate) || !rate.chipValues || typeof rate.chipValues !== 'object' || Array.isArray(rate.chipValues)) throw new Error('Invalid table settings.');
+  const entries=Object.entries(rate.chipValues), names=new Set();
+  if(entries.length>30)throw new Error('Use at most 30 chip colors.');
+  for(const [name,value] of entries){
+    const key=name.toLowerCase();
+    if(!/^[A-Za-z][A-Za-z -]{0,29}$/.test(name)||['constructor','prototype'].includes(key)||names.has(key))throw new Error('Use unique chip color names.');
+    if(!Number.isFinite(value)||value<0||value>1000000)throw new Error('Chip values must be between 0 and 1,000,000.');
+    names.add(key);
+  }
+}
+// Allocate unavoidable fractional cents without changing the actual chip counts.
+export function allocateStacks(players, stacks, rate) {
+  const available=ledger(players).tableCents;
+  const rows=players.map(p=>{
+    const text=stacks?.[p.id];
+    if(text===undefined||String(text).trim()===''||!Number.isFinite(Number(text))||Number(text)<0||Number(text)>100000000)throw new Error('Enter every final stack, including zero.');
+    const rounded=chipsToCents(Number(text),rate);
+    const raw=Number(text)*rate.baseCurrency/rate.chips*100;
+    return {p,raw,rounded,cents:Math.floor(raw+1e-8)};
+  });
+  const expectedRaw=ledger(players).inCents-priorCashOutUnits(players,rate)*rate.baseCurrency/rate.chips*100;
+  if(Math.abs(rows.reduce((s,r)=>s+r.raw,0)-expectedRaw)>1e-5)throw new Error('Chip values do not match the remaining table balance. Correct the counts before finalizing.');
+  let remaining=available-rows.reduce((s,r)=>s+r.cents,0);
+  const sorted=[...rows].sort((a,b)=>(b.raw-b.cents)-(a.raw-a.cents)||a.p.id.localeCompare(b.p.id));
+  if(remaining<0||remaining>rows.length)throw new Error('Unable to reconcile rounding.');
+  for(let i=0;i<remaining;i++)sorted[i].cents++;
+  return rows.map(r=>({...r.p,finalStackValue:r.cents/100}));
+}
+
+export function priorCashOutUnits(players,rate){return players.reduce((s,p)=>s+(p.cashOutChipUnits?p.cashOutChipUnits.reduce((a,b)=>a+b,0):sumCents(p.cashOuts)/100*rate.chips/rate.baseCurrency),0);}
+export function cashOutCents(players,units,rate){
+  chipsToCents(units,rate);
+  const totals=ledger(players);
+  const raw=(priorCashOutUnits(players,rate)+units)*rate.baseCurrency/rate.chips*100;
+  if(raw-totals.inCents>1e-5)throw new Error('Cash-out exceeds the chips remaining on the table.');
+  return Math.round(raw+1e-6)-totals.midCents;
 }

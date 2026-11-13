@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { sumCents, cashToChips } from '../ledger.mjs';
+import { sumCents, cashToChips, moneyCents } from '../ledger.mjs';
 import { Player, ExchangeRate } from '../types';
 import { RefreshCw, UserPlus, Users, Trash2, Play, Edit3 } from 'lucide-react';
 
@@ -21,12 +21,12 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   const [saving, setSaving] = useState(false);
   const validInitial = newPlayerBuyIn.trim() === '' || (Number.isFinite(Number(newPlayerBuyIn)) && Number(newPlayerBuyIn) > 0 && Number(newPlayerBuyIn)<=100000000 && Number.isSafeInteger(Math.round(Number(newPlayerBuyIn) * 100)) && Math.round(Number(newPlayerBuyIn) * 100) > 0);
   const handleAddPlayer = async () => {
-    if (!newPlayerName.trim() || newPlayerName.trim().length > 49 || !validInitial || saving) return;
+    if (!newPlayerName.trim() || newPlayerName.trim().length > 49 || !validInitial || saving || players.length>=30) return;
     
     const newPlayer: Player = {
       id: crypto.randomUUID(),
       name: newPlayerName.trim(),
-      buyIns: newPlayerBuyIn ? [Math.round(Number(newPlayerBuyIn) * 100) / 100] : [],
+      buyIns: newPlayerBuyIn ? [moneyCents(Number(newPlayerBuyIn)) / 100] : [],
       cashOuts: [],
       finalStackValue: 0,
     };
@@ -41,7 +41,8 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   };
 
   const handleBulkApply = async () => {
-    const cents = Math.round(Number(bulkBuyIn) * 100);
+    const value=Number(bulkBuyIn);
+    const cents=Number.isFinite(value)&&value>0&&value<=100000000?moneyCents(value):NaN;
     if (!Number.isSafeInteger(cents) || cents <= 0 || cents > 10000000000 || saving) return;
     setSaving(true);
     try {
@@ -143,7 +144,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
               </div>
               <button 
                 onClick={handleAddPlayer}
-                disabled={saving || !newPlayerName.trim() || !validInitial}
+                disabled={saving || players.length>=30 || !newPlayerName.trim() || !validInitial}
                 className="w-full py-3.5 md:py-4 bg-secondary text-on-secondary font-bold rounded-lg hover:bg-secondary-dim disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95"
               >
                 <span>ADD TO GAME</span>
@@ -230,7 +231,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                           <p className="text-[10px] text-outline text-right">{playerChips.toLocaleString()} Chips</p>
                         </div>
                       )}
-                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in for '+player.name,String(player.buyIns[0]||''));if(raw===null)return;const cents=Math.round(Number(raw)*100);if(!Number.isSafeInteger(cents)||cents<=0){alert('Enter a positive amount.');return;}setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:[cents/100]}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
+                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in for '+player.name,String(player.buyIns[0]||''));if(raw===null)return;const value=Number(raw);const cents=Number.isFinite(value)&&value>0&&value<=100000000?moneyCents(value):NaN;if(!Number.isSafeInteger(cents)||cents<=0){alert('Enter a positive amount.');return;}setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:[cents/100]}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
                       <button aria-label={'Remove '+player.name} onClick={() => removePlayer(player.id)} disabled={saving} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
                         <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
@@ -271,3 +272,4 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
     </>
   );
 }
+

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Player, ExchangeRate } from '../types';
 import { Wallet, LogOut } from 'lucide-react';
-import { sumCents, money, ledger, chipsToCents, moneyCents, cashToChips, formatMoney } from '../ledger.mjs';
+import { sumCents, money, ledger, chipsToCents, moneyCents, cashToChips, formatMoney, cashOutCents } from '../ledger.mjs';
 import ChipCounter from './ChipCounter';
 
 type Props = {
@@ -19,7 +19,6 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
   const [saving, setSaving] = useState(false);
   const [undoing,setUndoing]=useState(false);
   const undo=async(id:string,type:'buyIn'|'cashOut')=>{if(undoing||saving)return;setUndoing(true);try{await onUndo(id,type)}finally{setUndoing(false)}};
-  const [counter, setCounter] = useState(false);
 
   const totals=ledger(players);
   const totalPot=totals.tableCents/100;
@@ -27,7 +26,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
   let preview='',validAmount=false;
   try{if(amount.trim() && Number(amount)>0){
     const n=Number(amount);
-    const cents=transactionType==='cashOut'?chipsToCents(n,exchangeRate):moneyCents(n);
+    const cents=transactionType==='cashOut'?cashOutCents(players,n,exchangeRate):moneyCents(n);
     preview=transactionType==='cashOut'?formatMoney(cents):cashToChips(n,exchangeRate).toLocaleString()+' chip units';
     validAmount=cents>0&&(transactionType!=='cashOut'||cents<=totals.tableCents);
   }}catch{}
@@ -130,7 +129,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                   onClick={() => {
                     setSelectedPlayerId(player.id);
                     setTransactionType('buyIn');
-                    setAmount('');setCounter(false); setShowCounter(false); setAmount('');
+                    setAmount('');setShowCounter(false); setAmount('');
                   }}
                   className="flex-1 sm:flex-none px-3 md:px-4 py-2.5 md:py-2 bg-secondary-container text-on-secondary-container rounded-lg font-semibold text-sm transition-colors hover:bg-secondary/20 active:scale-95"
                 >
@@ -140,7 +139,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                   onClick={() => {
                     setSelectedPlayerId(player.id);
                     setTransactionType('cashOut');
-                    setAmount('');setCounter(false); setShowCounter(false); setAmount('');
+                    setAmount('');setShowCounter(false); setAmount('');
                   }}
                   className="flex-1 sm:flex-none px-3 md:px-4 py-2.5 md:py-2 text-error font-semibold text-sm border border-error/20 rounded-lg hover:bg-error/5 transition-colors active:scale-95"
                 >
@@ -188,7 +187,6 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 {amount&&preview&&!validAmount&&<p className="text-xs text-error mt-2">Amount is invalid or exceeds the available table balance.</p>}
               </div>
               
-              {transactionType === 'cashOut' && <><button className="text-sm font-bold text-primary underline" onClick={()=>setCounter(v=>!v)}>{counter?'Hide counter':'Count chips by color'}</button>{counter&&<ChipCounter rate={exchangeRate} onApply={units=>{setAmount(String(units));setCounter(false);}}/>}</>}
               <div className="flex gap-3 pt-6">
                 <button 
                   disabled={saving}
@@ -220,3 +218,4 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
     </>
   );
 }
+

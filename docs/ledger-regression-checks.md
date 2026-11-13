@@ -34,3 +34,11 @@ See the security checks for authentication, room membership and Gemini proxy dep
 - Test the manual color counter and numeric chip-value entry. At $20 per 100 units, 10 red (5 each), 4 green (25 each), 1 black (100 each) total 250 units = $50.
 - Enter zero explicitly for an empty stack. Confirm the ledger refuses finalization when the totals differ by even one cent; correct inputs, then finalize. This assumes no rake or external money movement.
 - Run `npm test`, `npm run lint`, and `npm run build`. A passing arithmetic test is not a live camera, Gemini, or Firebase test.
+
+
+
+## Review fixes regression coverage
+
+`tests/mutations.test.mjs` exercises server mutation validation and actual shared financial logic, including oversized edits, aggregate totals, settings conflicts, current-roster start checks, repeated identical rebuys, overdrafts, undo, finalization, and fractional cents with partial cash-outs.
+
+Manual deployment checks: host/guest permissions; concurrent host tabs; retry after a lost response; reopen archived results from Home; refresh or navigate during settlement and recover photos/reviews; reject duplicate colors; confirm only one cash-out calculator appears; force browser-storage failure and verify an archive is not reported as saved.

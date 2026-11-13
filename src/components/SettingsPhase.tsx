@@ -1,12 +1,13 @@
 import React, { useState, useRef } from 'react';
 import { ExchangeRate } from '../types';
 import { ArrowLeft, Palette, History, Calendar, Camera, Loader2, Plus, X } from 'lucide-react';
+import ResultsPhase from './ResultsPhase';
 import { scanChips, prepareChipPhoto } from '../scan';
 
 type Props = {
   canEdit: boolean;
   exchangeRate: ExchangeRate;
-  setExchangeRate: (rate: ExchangeRate) => void;
+  setExchangeRate: (rate: ExchangeRate, expected?: ExchangeRate) => Promise<boolean>;
   history: any[];
   onBack: () => void;
   onLeaveGame?: () => void;
@@ -14,20 +15,16 @@ type Props = {
 };
 
 export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, history, onBack, onLeaveGame, gameId }: Props) {
+  const [selectedGame,setSelectedGame]=useState<any>(null);
   const [newColorName, setNewColorName] = useState('');
   const [scanningColors, setScanningColors] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleAddColor = () => {
+  const handleAddColor = async () => {
+    if(Object.keys(exchangeRate.chipValues).some(c=>c.toLowerCase()===newColorName.trim().toLowerCase())){alert("That color already exists. Edit its value instead.");return;}
+    if(Object.keys(exchangeRate.chipValues).length>=30){alert("Use at most 30 colors.");return;}
     if (!/^[A-Za-z][A-Za-z -]{0,29}$/.test(newColorName.trim()) || ['constructor','prototype'].includes(newColorName.trim().toLowerCase())) { alert('Use a color name with letters, spaces or hyphens.'); return; }
-    setExchangeRate({
-      ...exchangeRate,
-      chipValues: {
-        ...exchangeRate.chipValues,
-        [newColorName.trim()]: 0
-      }
-    });
-    setNewColorName('');
+    if(await setExchangeRate({...exchangeRate,chipValues:{...exchangeRate.chipValues,[newColorName.trim()]:0}}))setNewColorName('');
   };
 
   const handleRemoveColor = (color: string) => {
@@ -62,11 +59,11 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
           detectedColors.forEach(color => {
             // Capitalize first letter
             const formattedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
-            if (!(formattedColor in newChipValues)) {
+            if (!Object.keys(newChipValues).some(c=>c.toLowerCase()===formattedColor.toLowerCase())) {
               newChipValues[formattedColor] = 0;
             }
           });
-          setExchangeRate({ ...exchangeRate, chipValues: newChipValues });
+          await setExchangeRate({ ...exchangeRate, chipValues: newChipValues }, exchangeRate);
         }
       }
     } catch (error) {
@@ -78,6 +75,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
     }
   };
 
+  if(selectedGame)return <div className="space-y-4"><button className="club-secondary" onClick={()=>setSelectedGame(null)}>Back to history</button><ResultsPhase players={selectedGame.players} onArchive={()=>setSelectedGame(null)} archiveLabel="Back to history"/></div>;
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -125,8 +123,8 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
               <div className="w-24 relative">
                 <input 
                   type="number"
-                  value={value || ''}
-                  onChange={(e) => handleUpdateColorValue(color, e.target.value)}
+                  key={color+':'+value} defaultValue={value} min={0} max={1000000}
+                  onBlur={(e) => {const n=Number(e.target.value);if(Number.isFinite(n)&&n>=0&&n<=1000000)handleUpdateColorValue(color,e.target.value);else {alert('Use a value between 0 and 1,000,000.');e.target.value=String(value);}}}
                   placeholder="Value"
                   className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-1.5 text-right font-bold focus:border-primary outline-none text-sm"
                 />
@@ -168,7 +166,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
             <p className="text-xs text-outline text-center py-4">No games archived yet.</p>
           ) : (
             history.map((game) => (
-              <div key={game.id} className="p-3 bg-surface-container-low rounded-lg flex items-center justify-between">
+              <button type="button" onClick={()=>setSelectedGame(game)} key={game.id} className="w-full text-left p-3 bg-surface-container-low rounded-lg flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-surface-container-highest rounded-lg">
                     <Calendar className="w-4 h-4 text-primary" />
@@ -185,7 +183,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
                     ${game.players.reduce((sum: number, p: any) => sum + (p.buyIns.reduce((a: number, b: number) => a + b, 0)), 0).toFixed(0)} Pot
                   </p>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -218,3 +216,4 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
     </div>
   );
 }
+

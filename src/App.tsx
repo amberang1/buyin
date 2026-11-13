@@ -7,10 +7,10 @@ import SettlementPhase from './components/SettlementPhase';
 import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
 import { Spade, Settings, Layers, LogOut } from 'lucide-react';
-import { reconciliation, ledger, moneyCents, chipsToCents } from './ledger.mjs';
-import { auth, db, ensureAnonymousUser, projectId } from './firebase';
-import { roomRequest } from './rooms';
-import { doc, collection, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
+import { validateSettings } from './ledger.mjs';
+import { db, ensureAnonymousUser, projectId } from './firebase';
+import { roomRequest, ledgerRequest } from './rooms';
+import { doc, collection, onSnapshot } from 'firebase/firestore';
 
 function samePlayer(a?: Player, b?: Player) {
   if (!a || !b) return a === b;
@@ -59,7 +59,7 @@ export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<any[]>(() => {
     const saved = localStorage.getItem('poker_history_' + projectId);
-    try { return saved ? JSON.parse(saved) : []; } catch { return []; }
+    try { const value=saved?JSON.parse(saved):[]; return Array.isArray(value)?value:[]; } catch { return []; }
   });
 
   // Never treat a cache miss or transient permission/network error as a reason
@@ -131,170 +131,47 @@ export default function App() {
     finally { setJoining(false); }
   };
 
-  const handleSetExchangeRate = (newRate: ExchangeRate) => {
-    if (gameId && (!isHost || gamePhase !== 'setup')) return;
-    if (!Number.isFinite(newRate.baseCurrency) || newRate.baseCurrency <= 0 ||
-        !Number.isFinite(newRate.chips) || newRate.chips <= 0 ||
-        Object.values(newRate.chipValues).some(v => !Number.isFinite(v) || v < 0)) return;
-    setExchangeRate(newRate);
-    if (gameId) {
-      updateDoc(doc(db, 'games', gameId), { exchangeRate: newRate }).catch(error => {
-        console.error(error);
-        alert('Could not save table settings. Please reload and try again.');
-      });
-    }
-  };
-
-  // The server phase is authoritative. Navigation must not reopen a completed game.
-  const advancePhase = async (from: Phase, to: Phase) => {
-    if (!gameId || !isHost) return;
-    try {
-      await runTransaction(db, async tx => {
-        const ref = doc(db, 'games', gameId);
-        const snapshot = await tx.get(ref);
-        if (!snapshot.exists() || snapshot.data().status !== from) {
-          throw new Error('The game has already changed. Please check the latest screen.');
-        }
-        tx.update(ref, { status: to });
-      });
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Could not change game phase.');
-    }
-  };
-
-  // Setup edits write only changed documents and reject stale edits instead of
-  // overwriting another device's work. Snapshots update the local UI after commit.
-  const handleSetPlayers = async (newPlayersOrCb: Player[] | ((prev: Player[]) => Player[])) => {
-    if (!gameId || !isHost) return false;
-    const next = typeof newPlayersOrCb === 'function' ? newPlayersOrCb(players) : newPlayersOrCb;
-    const before = new Map<string, Player>(players.map((p: Player): [string, Player] => [p.id, p]));
-    const after = new Map<string, Player>(next.map((p: Player): [string, Player] => [p.id, p]));
-    const ids = Array.from(new Set([...before.keys(), ...after.keys()]))
-      .filter(id => !samePlayer(before.get(id), after.get(id)));
-    try {
-      await runTransaction(db, async tx => {
-        const game = await tx.get(doc(db, 'games', gameId));
-        if (!game.exists() || game.data().status !== 'setup') throw new Error('Setup is closed.');
-        const refs = ids.map(id => doc(db, 'games', gameId, 'players', id));
-        const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
-        snapshots.forEach((snap, i) => {
-          const current = snap.exists() ? { ...snap.data(), id: snap.id } as Player : undefined;
-          if (!samePlayer(current, before.get(ids[i]))) throw new Error('A player changed on another device. Review the latest values and try again.');
-        });
-        refs.forEach((ref, i) => {
-          const player = after.get(ids[i]);
-          if (player) tx.set(ref, player);
-          else tx.delete(ref);
-        });
-      });
-      return true;
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Could not save players.');
-      return false;
-    }
-  };
-
-  // Re-read the selected player in a transaction, so simultaneous entries
-  // append independently even when the amounts are identical.
-  const handleRecordTransaction = async (playerId: string, type: 'buyIn' | 'cashOut', amount: number) => {
-    if (!gameId || !isHost || !Number.isFinite(amount) || amount <= 0) return false;
-    try {
-      await runTransaction(db, async tx => {
-        const game = await tx.get(doc(db, 'games', gameId));
-        const ref = doc(db, 'games', gameId, 'players', playerId);
-        const player = await tx.get(ref);
-        if (!game.exists() || game.data().status !== 'active' || !player.exists()) throw new Error('This game or player is no longer active.');
-        const rate = game.data().exchangeRate as ExchangeRate;
-        if (!Number.isFinite(rate.baseCurrency) || rate.baseCurrency <= 0 || !Number.isFinite(rate.chips) || rate.chips <= 0) throw new Error('Invalid table exchange rate.');
-        if (rate.baseCurrency !== exchangeRate.baseCurrency || rate.chips !== exchangeRate.chips) throw new Error('Exchange rate changed. Review the latest rate and try again.');
-        const cents = type==='buyIn'?moneyCents(amount):chipsToCents(amount,rate);
-        if(cents<=0) throw new Error('Amount must be at least one cent.');
-        // Read the other roster entries in the same transaction to prevent
-        // concurrent cash-outs from exceeding the cash remaining on the table.
-        if(type==='cashOut'){
-          const others=await Promise.all(players.filter(p=>p.id!==playerId).map(p=>tx.get(doc(db,'games',gameId,'players',p.id))));
-          const current=[{...player.data(),id:player.id},...others.filter(s=>s.exists()).map(s=>({...s.data(),id:s.id}))] as Player[];
-          if(cents>ledger(current).tableCents)throw new Error('Cash-out exceeds the table balance.');
-        }
-        const value=cents/100;
-        const field = type === 'buyIn' ? 'buyIns' : 'cashOuts';
-        if ((player.data()[field] as number[]).length >= 100) throw new Error('Transaction limit reached for this player.');
-        tx.update(ref, { [field]: [...(player.data()[field] as number[]), value] });
-      });
-      return true;
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Could not save transaction.');
-      return false;
-    }
-  };
-
-  const handleUndoTransaction = async (playerId:string, type:'buyIn'|'cashOut') => {
+  const [settingsBusy,setSettingsBusy]=useState(false);
+  const saveAction=async(action:string,data:unknown)=>{
     if(!gameId||!isHost)return false;
-    const expected=players.find(p=>p.id===playerId);
-    const field=type==='buyIn'?'buyIns':'cashOuts';
-    if(!expected||expected[field].length<=(type==='buyIn'?1:0))return false;
-    const last=expected[field][expected[field].length-1];
-    if(!confirm('Undo last '+(type==='buyIn'?'rebuy':'cash-out')+' for '+expected.name+' ($'+last.toFixed(2)+')?'))return false;
-    try{
-      await runTransaction(db,async tx=>{
-        const game=await tx.get(doc(db,'games',gameId));
-        const refs=players.map(p=>doc(db,'games',gameId,'players',p.id));
-        const snapshots=await Promise.all(refs.map(ref=>tx.get(ref)));
-        if(!game.exists()||game.data().status!=='active')throw new Error('Return to active play before editing entries.');
-        const current=snapshots.filter(s=>s.exists()).map(s=>({...s.data(),id:s.id} as Player));
-        const target=current.find(p=>p.id===playerId);
-        if(!samePlayer(target,expected))throw new Error('This player changed. Review the ledger and retry.');
-        const corrected={...target!,[field]:target![field].slice(0,-1)};
-        if(ledger(current.map(p=>p.id===playerId?corrected:p)).tableCents<0)throw new Error('Undo the relevant cash-out first; the table cannot have a negative balance.');
-        tx.update(doc(db,'games',gameId,'players',playerId),{[field]:corrected[field]});
-      });
-      return true;
-    }catch(error){alert(error instanceof Error?error.message:'Could not undo entry.');return false;}
+    try{await ledgerRequest(gameId,action,data);return true;}
+    catch(error){alert(error instanceof Error?error.message:'Could not save.');return false;}
   };
-
-  const handleStartSession = () => {
-    if (players.length < 2 || players.some(p => !p.buyIns.length || p.buyIns.some(v => !Number.isFinite(v) || v <= 0))) { alert('Add at least two players with valid buy-ins.'); return; }
-    return advancePhase('setup', 'active');
+  const handleSetExchangeRate = async(newRate:ExchangeRate, expected:ExchangeRate=exchangeRate) => {
+    if(settingsBusy||!isHost||gamePhase!=='setup')return false;
+    try{validateSettings(newRate);}catch(error){alert((error as Error).message);return false;}
+    setSettingsBusy(true);
+    try{return await saveAction('settings',{rate:newRate,expected});}finally{setSettingsBusy(false);}
   };
-  const handleSettleGame = () => advancePhase('active', 'settlement');
-
-  // Save all final stacks and the results phase together, or save neither.
-  const handleShowResults = async (next: Player[]) => {
-    if (!gameId || !isHost || !next.length) return false;
-    if (reconciliation(next).difference !== 0) { alert('The ledger must balance before finalizing.'); return false; }
-    try {
-      await runTransaction(db, async tx => {
-        const gameRef = doc(db, 'games', gameId);
-        const game = await tx.get(gameRef);
-        if (!game.exists() || game.data().status !== 'settlement') throw new Error('Settlement is no longer active.');
-        const rate = game.data().exchangeRate as ExchangeRate;
-        if (rate.baseCurrency !== exchangeRate.baseCurrency || rate.chips !== exchangeRate.chips) throw new Error('Exchange rate changed. Review the settlement and retry.');
-        const refs = next.map(p => doc(db, 'games', gameId, 'players', p.id));
-        const snapshots = await Promise.all(refs.map(ref => tx.get(ref)));
-        snapshots.forEach((snap, i) => {
-          const current = snap.exists() ? { ...snap.data(), id: snap.id } as Player : undefined;
-          if (!samePlayer(current, players.find(p => p.id === next[i].id))) throw new Error('The ledger changed. Review the latest values and retry.');
-        });
-        refs.forEach((ref, i) => tx.set(ref, next[i]));
-        tx.update(gameRef, { status: 'results' });
-      });
-      return true;
-    } catch (error) {
-      alert(error instanceof Error ? error.message : 'Could not save settlement.');
-      return false;
-    }
+  const advancePhase=async(from:Phase,to:Phase)=>saveAction('phase',{from,to});
+  const handleSetPlayers=async(nextOrCb:Player[]|((prev:Player[])=>Player[]))=>{
+    const next=typeof nextOrCb==='function'?nextOrCb(players):nextOrCb;
+    const ids=Array.from(new Set([...players.map(p=>p.id),...next.map(p=>p.id)]));
+    const changes=ids.filter(id=>!samePlayer(players.find(p=>p.id===id),next.find(p=>p.id===id)))
+      .map(id=>({id,before:players.find(p=>p.id===id)||null,after:next.find(p=>p.id===id)||null}));
+    return saveAction('setup',{changes});
   };
+  const handleRecordTransaction=(playerId:string,type:'buyIn'|'cashOut',amount:number)=>saveAction('record',{playerId,type,amount,rate:exchangeRate});
+  const handleUndoTransaction=async(playerId:string,type:'buyIn'|'cashOut')=>{
+    const expected=players.find(p=>p.id===playerId);if(!expected)return false;
+    if(!confirm('Undo last '+(type==='buyIn'?'rebuy':'cash-out')+' for '+expected.name+'?'))return false;
+    return saveAction('undo',{playerId,type,expected});
+  };
+  const handleStartSession=()=>advancePhase('setup','active');
+  const handleSettleGame=()=>advancePhase('active','settlement');
+  const handleShowResults=(stacks:Record<string,string>,photos:Record<string,string>)=>saveAction('finalize',{stacks,photos,expected:players,rate:exchangeRate});
   const handleArchiveSession = () => {
     if (players.length > 0) {
       const newHistoryItem = {
         id: Date.now().toString(),
         date: new Date().toISOString(),
-        players: [...players],
+        players: players.map(({photoUrl,...player})=>player),
+        roomId: gameId, roomCode,
         exchangeRate: { ...exchangeRate }
       };
-      const updatedHistory = [newHistoryItem, ...history].slice(0, 20);
-      setHistory(updatedHistory);
-      localStorage.setItem('poker_history_' + projectId, JSON.stringify(updatedHistory));
+      const updatedHistory = [newHistoryItem, ...history].slice(0, 20).map(item=>({...item,players:item.players.map(({photoUrl,...p}:Player)=>p)}));
+      try { localStorage.setItem('poker_history_' + projectId, JSON.stringify(updatedHistory)); setHistory(updatedHistory); }
+      catch { alert('Could not save your archive: device storage is full. Share results or free space, then retry.'); return; }
     }
     handleLeaveGame();
   };
@@ -343,14 +220,10 @@ export default function App() {
       <main className="pt-24 px-4 md:px-6 max-w-5xl mx-auto space-y-8 md:space-y-12">
         {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Guest view: only the host can edit this ledger.</p>}
         {phase === 'home' && (
-          <HomePhase 
-            busy={joining}
-            onCreateGame={handleCreateGame}
-            onJoinGame={handleJoinGame}
-          />
+          <><HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>
         )}
         {phase === 'setup' && (
-          <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
+          <fieldset disabled={!isHost||settingsBusy} className="min-w-0 space-y-6 border-0 p-0">
           <SetupPhase 
             exchangeRate={exchangeRate} 
             setExchangeRate={handleSetExchangeRate} 
@@ -391,7 +264,7 @@ export default function App() {
         )}
         {phase === 'settings' && (
           <SettingsPhase 
-            canEdit={isHost && gamePhase === 'setup'}
+            canEdit={isHost && gamePhase === 'setup' && !settingsBusy}
             exchangeRate={exchangeRate}
             setExchangeRate={handleSetExchangeRate}
             history={history}
@@ -402,7 +275,7 @@ export default function App() {
         )}
       </main>
 
-      {phase !== 'home' && (
+      {gameId && phase !== 'home' && (
         <nav className="fixed bottom-0 left-0 w-full club-nav flex justify-around items-center px-4 bg-surface-container-lowest/80 backdrop-blur-xl z-50 shadow-[0_-12px_32px_rgba(62,94,149,0.06)] border-t border-surface-container-low/15">
           <button 
             onClick={() => setPhase(gamePhase)}
@@ -433,3 +306,4 @@ export default function App() {
     </div>
   );
 }
+

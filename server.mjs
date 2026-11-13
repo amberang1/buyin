@@ -1,3 +1,5 @@
+import { validateSettings } from './src/ledger.mjs';
+import { mutateRoom } from './src/mutations.mjs';
 import 'dotenv/config';
 import express from 'express';
 import { parseStackScan } from './src/ledger.mjs';
@@ -60,14 +62,7 @@ async function identify(req) {
   const user = (await result.json()).users?.[0];
   return user?.localId && !user.disabled ? user.localId : null;
 }
-function validRate(rate) {
-  if (!rate || !Number.isFinite(rate.baseCurrency) || rate.baseCurrency <= 0 || rate.baseCurrency > 1000000 ||
-      !Number.isFinite(rate.chips) || rate.chips <= 0 || rate.chips > 100000000 ||
-      !rate.chipValues || typeof rate.chipValues !== 'object' || Array.isArray(rate.chipValues)) return false;
-  const values = Object.entries(rate.chipValues);
-  return values.length <= 30 && values.every(([k,v]) => colorPattern.test(k) &&
-    !['constructor','prototype'].includes(k.toLowerCase()) && Number.isFinite(v) && v >= 0 && v <= 1000000);
-}
+function validRate(rate) {try{validateSettings(rate);return true;}catch{return false;}}
 function rateFields(rate) {
   return { mapValue: { fields: { baseCurrency: nv(rate.baseCurrency), chips: nv(rate.chips),
     chipValues: { mapValue: { fields: Object.fromEntries(Object.entries(rate.chipValues).map(([k,v]) => [k,nv(v)])) } } } } };
@@ -150,6 +145,65 @@ app.post('/api/rooms/:action', express.json({ limit: '16kb' }), async (req,res) 
   }
 });
 
+// Financial writes are server-only and serialize against the complete room roster.
+function decode(value) {
+  if ('mapValue' in value) return Object.fromEntries(Object.entries(value.mapValue.fields||{}).map(([k,v])=>[k,decode(v)]));
+  if ('arrayValue' in value) return (value.arrayValue.values||[]).map(decode);
+  if ('stringValue' in value) return value.stringValue;
+  if ('integerValue' in value) return Number(value.integerValue);
+  if ('doubleValue' in value) return value.doubleValue;
+  if ('booleanValue' in value) return value.booleanValue;
+  return null;
+}
+function encode(value) {
+  if(value===null)return {nullValue:null};
+  if(typeof value==='string')return {stringValue:value};
+  if(typeof value==='number')return {doubleValue:value};
+  if(typeof value==='boolean')return {booleanValue:value};
+  if(Array.isArray(value))return {arrayValue:{values:value.map(encode)}};
+  return {mapValue:{fields:Object.fromEntries(Object.entries(value).map(([k,v])=>[k,encode(v)]))}};
+}
+app.post('/api/ledger', express.json({limit:'6mb'}), async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  let transaction;
+  try {
+    const uid=await identify(req);
+    if(!uid)return res.status(401).json({error:'Reconnect before editing.'});
+    const {gameId,requestId,action,data}=req.body||{};
+    if(!roomPattern.test(gameId||'')||!/^[a-f0-9-]{36}$/.test(requestId||'')||!data)return res.status(400).json({error:'Invalid ledger request.'});
+    for(let attempt=0;attempt<4;attempt++){
+      transaction=(await firestoreRequest(documents+':beginTransaction','POST',{options:{readWrite:{}}})).transaction;
+      try {
+        const read=async name=>{
+          try{return await firestoreRequest(documents+'/'+name+'?transaction='+encodeURIComponent(transaction));}
+          catch(e){if(e.response?.status===404)return null;throw e;}
+        };
+        const gameDoc=await read('games/'+gameId);
+        const game=gameDoc?decode({mapValue:{fields:gameDoc.fields}}):null;
+        if(!game||game.hostId!==uid){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.status(403).json({error:'Only the host can edit this room.'});}
+        const receipt='games/'+gameId+'/operations/'+requestId;
+        if(await read(receipt)){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.json({ok:true});}
+        const query=await firestoreRequest(documents+'/games/'+gameId+':runQuery','POST',{transaction,structuredQuery:{from:[{collectionId:'players'}]}});
+        const original=query.filter(r=>r.document).map(r=>decode({mapValue:{fields:r.document.fields}})).sort((a,b)=>a.id.localeCompare(b.id));
+        const next=mutateRoom(game,original,action,data);
+        const writes=[writeDocument('games/'+gameId,encode(next.game).mapValue.fields)];
+        for(const player of next.players){
+          if(JSON.stringify(player)!==JSON.stringify(original.find(p=>p.id===player.id)))writes.push(writeDocument('games/'+gameId+'/players/'+player.id,encode(player).mapValue.fields));
+        }
+        for(const player of original)if(!next.players.some(p=>p.id===player.id))writes.push({delete:fullName('games/'+gameId+'/players/'+player.id)});
+        writes.push(writeDocument(receipt,{action:sv(action),createdAt:sv(new Date().toISOString())},true));
+        await firestoreRequest(documents+':commit','POST',{transaction,writes});transaction=null;
+        return res.json({ok:true});
+      } catch(error){
+        if(transaction)await firestoreRequest(documents+':rollback','POST',{transaction}).catch(()=>{});transaction=null;
+        if(conflict(error)&&attempt<3)continue;
+        if(!error.response)return res.status(400).json({error:error.message||'Invalid ledger change.'});
+        throw error;
+      }
+    }
+  }catch{ return res.status(503).json({error:'Could not save. Retry the same action; duplicate requests are ignored.'}); }
+});
+
 app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
   res.set('Cache-Control', 'no-store');
   const token = /^Bearer ([^\s]+)$/.exec(req.get('authorization') || '')?.[1];
@@ -228,3 +282,4 @@ if (process.argv.includes('--dev')) {
   app.get('*', (_req,res) => res.sendFile(path.join(dist,'index.html')));
 }
 app.listen(Number(process.env.PORT || 3000), '0.0.0.0');
+

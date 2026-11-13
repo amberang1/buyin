@@ -25,14 +25,15 @@ export async function prepareChipPhoto(file: File): Promise<string> {
     });
     const canvas=document.createElement('canvas');
     let scale=Math.min(1,1800/Math.max(img.naturalWidth,img.naturalHeight));
-    for(let attempt=0;attempt<6;attempt++){
+    for(let attempt=0;attempt<12;attempt++){
       canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
       const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Image processing unavailable.');
       ctx.drawImage(img,0,0,canvas.width,canvas.height);
       const data=canvas.toDataURL('image/jpeg',Math.max(.60,.90-attempt*.06));
-      if(data.length<850000)return data;
+      if(data.length<180000)return data;
       scale*=.82;
     }
     throw new Error('Photo is too detailed to compress. Try a closer crop.');
   } finally { URL.revokeObjectURL(url); }
 }
+
