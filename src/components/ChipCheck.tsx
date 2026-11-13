@@ -1,3 +1,4 @@
+import PhotoPicker from './PhotoPicker';
 import {useEffect,useRef,useState} from 'react';
 import {Camera,Loader2} from 'lucide-react';
 import type {ExchangeRate} from '../types';
@@ -28,10 +29,10 @@ export default function ChipCheck({gameId,rate}:{gameId:string;rate:ExchangeRate
  const hasValues=Object.values(rate.chipValues).some(v=>v>0);
  return <section className="club-card p-4 space-y-4">
   <button className="club-secondary w-full flex justify-center gap-2 items-center" onClick={()=>setOpen(v=>!v)} aria-expanded={open}><Camera size={18}/>{open?'Hide chip check':'Check my chips'}</button>
-  {open&&<div className="space-y-4"><div><h2 className="text-xl font-bold">Check my chips</h2><p className="text-sm text-on-surface-variant">Photograph your stack at any time. This estimate does not change your buy-ins, cash-outs or game ledger.</p><p className="text-xs text-on-surface-variant mt-2">Separate colors and leave stack edges visible. Hidden chips cannot be counted reliably.</p></div>
+  {open&&<div className="space-y-4"><div><h2 className="text-xl font-bold">Check my chips</h2><p className="text-sm text-on-surface-variant">Take or upload a photo of your stack at any time. This estimate does not change your buy-ins, cash-outs or game ledger.</p><p className="text-xs text-on-surface-variant mt-2">Separate colors and leave stack edges visible. Hidden chips cannot be counted reliably.</p></div>
    {!hasValues?<p role="alert" className="text-error text-sm">Ask the host to configure chip values in Setup before scanning.</p>:<>
     {photo&&<img src={photo} alt="Your chips for a private estimate" className="w-full max-h-64 object-contain rounded-xl"/>}
-    <label className={'club-secondary flex justify-center items-center gap-2 cursor-pointer '+(busy?'opacity-50':'')}><Camera size={17}/>{photo?'Retake / choose another photo':'Take / choose a photo'}<input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy} onChange={e=>{const file=e.target.files?.[0];e.target.value='';void upload(file);}}/></label>
+    <PhotoPicker disabled={busy} onSelect={file=>void upload(file)}/>
     {photo&&<button className="club-button w-full" disabled={busy} onClick={scan}>{busy?<span className="flex justify-center items-center gap-2"><Loader2 className="animate-spin" size={16}/>Processing…</span>:'Scan my chips'}</button>}
     {busy&&!photo&&<p role="status" className="text-sm">Preparing photo…</p>}
    </>}

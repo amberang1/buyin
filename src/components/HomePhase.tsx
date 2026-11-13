@@ -7,7 +7,8 @@ export default function HomePhase({busy,onCreateGame,onJoinGame}:Props) {
   return <div className="mx-auto max-w-3xl space-y-5">
     <div className="grid sm:grid-cols-2 gap-4">
       <section className="club-card p-6 flex flex-col gap-4">
-        <div className="flex items-center gap-3"><div className="rounded-full bg-primary/10 p-3 text-primary"><Plus size={22}/></div><div><h2 className="font-headline font-bold text-lg">Host a game</h2><p className="text-xs text-on-surface-variant">Set stakes, add players, share a code.</p></div></div>
+        <div className="flex items-center gap-3"><div className="rounded-full bg-primary/10 p-3 text-primary"><Plus size={22}/></div><div><h2 className="font-headline font-bold text-lg">Host a game</h2><p className="text-xs text-on-surface-variant">Set chip values, add players, share a code.</p></div></div>
+        <p className="text-xs text-on-surface-variant">New rooms start with Blue 1, Green 5, Red 10 and Black 50. Adjust these before play.</p>
         <button disabled={busy} onClick={onCreateGame} className="club-button mt-auto flex justify-between items-center">{busy?'Connecting…':'Create new game'}<ArrowUpRight size={18}/></button>
       </section>
       <form className="club-card p-6 space-y-4" onSubmit={e=>{e.preventDefault();if(!busy&&isRoomCode(joinCode))onJoinGame(joinCode);}}>

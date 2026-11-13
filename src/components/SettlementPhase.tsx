@@ -1,3 +1,4 @@
+import PhotoPicker from './PhotoPicker';
 import React,{useState,useEffect} from 'react';
 import { Camera, Sparkles, Loader2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Player, ExchangeRate } from '../types';
@@ -63,10 +64,10 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete,
         <div><label className="text-xs font-bold" htmlFor={'stack-'+id}>Final chip value (not number of chips)</label><div className="flex gap-3 items-center mt-1"><input id={'stack-'+id} type="number" inputMode="decimal" min="0" max="100000000" step="any" className="club-input flex-1 min-w-0 font-bold text-xl" placeholder="Enter value, or 0" value={stacks[id]??''} onChange={e=>{clearReview(id);setStacks(prev=>({...prev,[id]:e.target.value}));}}/><span className="font-bold text-primary whitespace-nowrap">{valid(id)?'$'+money(chipCents(stacks[id],exchangeRate)):'—'}</span></div></div>
         <button className="club-secondary w-full" onClick={()=>setCounterId(counterId===id?null:id)}>{counterId===id?'Hide manual calculator':'Count chips by color'}</button>
         {counterId===id&&<ChipCounter rate={exchangeRate} onApply={units=>{clearReview(id);setStacks(prev=>({...prev,[id]:String(units)}));setCounterId(null)}}/>}
-        <div className="flex gap-3 items-center">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
           {photos[id]&&<img src={photos[id]} alt="Chip stack" className="w-20 h-20 rounded-xl object-cover"/>}
-          <div className="flex-1 flex flex-wrap gap-2">
-            <label className={'club-secondary flex items-center gap-2 text-sm cursor-pointer '+(busy[id]?'opacity-50 pointer-events-none':'')}><Camera size={16}/>{photos[id]?'Retake photo':'Take photo'}<input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy[id]} onChange={e=>{const file=e.target.files?.[0];e.target.value='';void upload(id,file);}}/></label>
+          <div className="min-w-0 flex-1 flex flex-wrap gap-2">
+            <PhotoPicker disabled={busy[id]} onSelect={file=>void upload(id,file)}/>
             {photos[id]&&<button className="club-button text-sm flex gap-2 items-center" onClick={()=>runScan(id)} disabled={busy[id]||saving}>{busy[id]?<Loader2 className="animate-spin" size={16}/>:<Sparkles size={16}/>} Scan chips</button>}
             {photos[id]&&<button aria-label="Remove photo" disabled={busy[id]} className="p-2 text-error" onClick={()=>{setPhotos(prev=>{const n={...prev};delete n[id];return n;});clearReview(id);}}><X size={20}/></button>}
           </div>

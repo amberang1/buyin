@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import PhotoPicker from './PhotoPicker';
+import React, { useState } from 'react';
 import { ExchangeRate } from '../types';
 import { ArrowLeft, Palette, History, Calendar, Camera, Loader2, Plus, X } from 'lucide-react';
 import ResultsPhase from './ResultsPhase';
@@ -18,7 +19,6 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
   const [selectedGame,setSelectedGame]=useState<any>(null);
   const [newColorName, setNewColorName] = useState('');
   const [scanningColors, setScanningColors] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddColor = async () => {
     if(Object.keys(exchangeRate.chipValues).some(c=>c.toLowerCase()===newColorName.trim().toLowerCase())){alert("That color already exists. Edit its value instead.");return;}
@@ -43,8 +43,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
     });
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const handlePhotoUpload = async (file: File) => {
     if (!file || !gameId || !canEdit) return;
 
     setScanningColors(true);
@@ -71,7 +70,6 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
       alert("Failed to scan chip colors. Please try again.");
     } finally {
       setScanningColors(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
@@ -82,40 +80,24 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
         <button onClick={onBack} className="p-2 hover:bg-surface-container rounded-full transition-colors">
           <ArrowLeft className="w-6 h-6" />
         </button>
-        <h2 className="text-3xl font-extrabold tracking-tight font-headline">Settings</h2>
+        <h2 className="text-3xl font-extrabold tracking-tight font-headline">{gameId ? 'Room settings' : 'Game history'}</h2>
       </div>
 
-      <fieldset disabled={!canEdit} className="min-w-0 border-0 p-5 bg-surface-container-lowest rounded-xl shadow-sm space-y-4">
+      {gameId && <><p className="text-sm text-on-surface-variant">{canEdit ? 'Changes are saved to this room.' : 'Chip values can only be changed by the host before play starts.'}</p><fieldset disabled={!canEdit} className="min-w-0 border-0 p-5 bg-surface-container-lowest rounded-xl shadow-sm space-y-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <Palette className="text-primary w-5 h-5" />
-            <h3 className="text-base font-bold tracking-tight font-headline">Chip Colors</h3>
+            <h3 className="text-base font-bold tracking-tight font-headline">Chip values</h3>
           </div>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            disabled={scanningColors}
-            className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-bold hover:bg-primary/20 transition-all disabled:opacity-50"
-          >
-            {scanningColors ? (
-              <><Loader2 className="w-3 h-3 animate-spin" /><span>Scanning...</span></>
-            ) : (
-              <><Camera className="w-3 h-3" /><span>Scan Chips</span></>
-            )}
-          </button>
-          <input 
-            type="file" 
-            accept="image/*" 
-            capture="environment"
-            className="hidden" 
-            ref={fileInputRef}
-            onChange={handlePhotoUpload}
-          />
+
         </div>
         
         <p className="text-xs text-on-surface-variant">
-          Define the value of each chip color. You can add them manually or take a picture of your starting stack to auto-detect colors.
+          These values belong to this room and are shared with every player. Set them before play starts. Photos detect colors only; enter each value yourself.
         </p>
 
+        <PhotoPicker disabled={scanningColors || !canEdit} onSelect={file=>void handlePhotoUpload(file)}/>
+        {scanningColors && <p role="status" className="text-sm">Detecting colors…</p>}
         <div className="space-y-3">
           {Object.entries(exchangeRate.chipValues).map(([color, value]) => (
             <div key={color} className="flex items-center gap-3 bg-surface-container-low p-2 md:p-3 rounded-lg border border-outline-variant/10">
@@ -153,7 +135,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
             <Plus className="w-4 h-4" />
           </button>
         </div>
-      </fieldset>
+      </fieldset></>}
 
       <div className="bg-surface-container-lowest p-5 rounded-xl shadow-sm space-y-4">
         <div className="flex items-center gap-3">

@@ -24,6 +24,8 @@ function samePlayer(a?: Player, b?: Player) {
     JSON.stringify(a.cashOuts) === JSON.stringify(b.cashOuts);
 }
 
+const newRoomRate = (): ExchangeRate => ({baseCurrency:20,chips:100,chipValues:{Blue:1,Red:10,Green:5,Black:50}});
+
 export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [authError, setAuthError] = useState(false);
@@ -50,18 +52,7 @@ export default function App() {
   const [readyPlayers, setReadyPlayers] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRate>({ 
-    baseCurrency: 20, 
-    chips: 100,
-    chipValues: {
-      'Blue': 1,
-      'Red': 5,
-      'Green': 25,
-      'Black': 100,
-      'Purple': 500,
-      'Yellow': 1000
-    }
-  });
+  const [exchangeRate, setExchangeRate] = useState<ExchangeRate>(newRoomRate);
   const [players, setPlayers] = useState<Player[]>([]);
   const [requests,setRequests]=useState<PlayerRequest[]>([]);
   const [payments,setPayments]=useState<Payment[]>([]);
@@ -144,7 +135,7 @@ export default function App() {
         id = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
         localStorage.setItem(pendingKey, id);
       }
-      const room = await roomRequest('create', { gameId: id, exchangeRate });
+      const room = await roomRequest('create', { gameId: id, exchangeRate: newRoomRate() });
       openRoom(room.gameId);
       localStorage.removeItem(pendingKey);
     } catch (error) { alert(error instanceof Error ? error.message : 'Could not create room.'); }
@@ -248,13 +239,13 @@ export default function App() {
         </div>
       </header>}
 
-      <main className={(phase === 'home' ? 'pt-12 sm:pt-20' : 'pt-24') + " px-4 md:px-6 max-w-5xl mx-auto space-y-8 md:space-y-12"}>
+      <main className={(phase === 'home' ? 'pt-12 sm:pt-20' : 'pt-24') + " px-4 md:px-6 max-w-3xl mx-auto space-y-5 md:space-y-6"}>
         {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Your requests appear below. The host confirms financial entries.</p>}
         {gameId&&participationError&&<div role="alert" className="club-card p-4 text-error">{participationError}<button className="club-secondary ml-2" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
-        {gameId&&phase!=='home'&&<ChipCheck key={gameId} gameId={gameId} rate={exchangeRate}/>}
+        {gameId&&(phase==='active'||phase==='settlement')&&<ChipCheck key={gameId} gameId={gameId} rate={exchangeRate}/>}
         {gameId&&userId&&phase!=='home'&&phase!=='settings'&&<ParticipationPanel uid={userId} host={isHost} phase={gamePhase} players={players} requests={requests} rate={exchangeRate} ready={participationReady} onAction={participantAction}/>}
         {phase === 'home' && (
-          <><h1 className="brand-wordmark brand-wordmark--home">Big Stack</h1>{gameId&&<section className="club-card p-5 space-y-3"><h2 className="text-xl font-bold">Your saved room{roomCode?' · '+roomCode:''}</h2><p className="text-sm text-on-surface-variant">Your room and entries are saved. Resume whenever you’re ready.</p><button className="club-button w-full" onClick={resumeRoom}>Resume room</button></section>}<HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>
+          <><h1 className="brand-wordmark brand-wordmark--home">Big Stack</h1>{gameId&&<section className="club-card p-5 space-y-3"><h2 className="text-xl font-bold">Your saved room{roomCode?' · '+roomCode:''}</h2><p className="text-sm text-on-surface-variant">Your room and entries are saved. Resume whenever you’re ready.</p><button className="club-button w-full" onClick={resumeRoom}>Resume room</button></section>}<HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>Game history</button></>
         )}
         {phase === 'setup' && (
           <fieldset disabled={!isHost||settingsBusy} className="min-w-0 space-y-6 border-0 p-0">
@@ -330,7 +321,7 @@ export default function App() {
             className={`flex flex-col items-center justify-center transition-colors ${phase === 'settlement' ? 'text-primary' : 'text-on-surface-variant'} disabled:opacity-30`}
           >
             <LogOut className="w-6 h-6 mb-1" />
-            <span className="text-[11px] uppercase tracking-wider font-semibold">Cash Out</span>
+            <span className="text-[11px] uppercase tracking-wider font-semibold">Settle game</span>
           </button>
 
           <button 
