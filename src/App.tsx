@@ -332,6 +332,7 @@ export default function App() {
             players={players}
             exchangeRate={exchangeRate}
             onComplete={handleShowResults}
+            gameId={gameId!}
           />
           </fieldset>
         )}
@@ -343,6 +344,7 @@ export default function App() {
         )}
         {phase === 'settings' && (
           <SettingsPhase 
+            canEdit={isHost && gamePhase === 'setup'}
             exchangeRate={exchangeRate}
             setExchangeRate={handleSetExchangeRate}
             history={history}
