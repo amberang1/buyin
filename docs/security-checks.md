@@ -1,6 +1,6 @@
 # Security deployment checks
 
-Use a test Firebase project first; enable Anonymous Authentication and publish rules to the configured named database.
+Use a test Firebase project first; enable Anonymous Authentication and publish rules to the dedicated `buy-in-d6405` project's `(default)` database.
 
 - Without authentication, all game/player/member data access is denied.
 - Authenticated outsiders cannot list games or read a room or its players before joining.
@@ -11,7 +11,7 @@ Use a test Firebase project first; enable Anonymous Authentication and publish r
 - POST /api/scan with no/invalid token: 401. Valid non-host or wrong phase: 403. Invalid/oversized input: 400/413. Exceed limits: 429.
 - Confirm host scans work in setup/settlement. Verify AI results manually.
 - Rotate keys exposed by older builds. Keep the replacement in server secrets only; restrict it to Gemini where supported.
-- Deploy a Node service over HTTPS with ADC and a least-privilege Firestore runtime service account, not static hosting. Verify the account is authorized in the named database. AI Studio deployment may need a different start command or hosting configuration.
+- Deploy a Node service over HTTPS with ADC and a least-privilege Firestore runtime service account, not static hosting. Verify the account is authorized in the Buy In project. AI Studio deployment may need a different start command or hosting configuration.
 
 ## Remaining considerations
 
