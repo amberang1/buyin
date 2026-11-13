@@ -16,6 +16,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
   const [transactionType, setTransactionType] = useState<'buyIn' | 'cashOut' | null>(null);
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [counter, setCounter] = useState(false);
 
   const totals=ledger(players);
   const totalPot=totals.tableCents/100;
@@ -124,7 +125,8 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 <button 
                   onClick={() => {
                     setSelectedPlayerId(player.id);
-                    setTransactionType('buyIn'); setShowCounter(false); setAmount('');
+                    setTransactionType('buyIn');
+                    setAmount('');setCounter(false); setShowCounter(false); setAmount('');
                   }}
                   className="flex-1 sm:flex-none px-3 md:px-4 py-2.5 md:py-2 bg-secondary-container text-on-secondary-container rounded-lg font-semibold text-sm transition-colors hover:bg-secondary/20 active:scale-95"
                 >
@@ -133,7 +135,8 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 <button 
                   onClick={() => {
                     setSelectedPlayerId(player.id);
-                    setTransactionType('cashOut'); setShowCounter(false); setAmount('');
+                    setTransactionType('cashOut');
+                    setAmount('');setCounter(false); setShowCounter(false); setAmount('');
                   }}
                   className="flex-1 sm:flex-none px-3 md:px-4 py-2.5 md:py-2 text-error font-semibold text-sm border border-error/20 rounded-lg hover:bg-error/5 transition-colors active:scale-95"
                 >
@@ -156,7 +159,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
               For <span className="font-bold text-on-surface">{players.find(p => p.id === selectedPlayerId)?.name}</span>
             </p>
             
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[65vh] overflow-y-auto">
               <div>
                 <label className="text-xs uppercase font-bold tracking-wider text-outline">
                   {transactionType === 'buyIn' ? 'Amount ($)' : 'Amount (Chips)'}
@@ -176,6 +179,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 {amount&&preview&&!validAmount&&<p className="text-xs text-error mt-2">Amount is invalid or exceeds the available table balance.</p>}
               </div>
               
+              {transactionType === 'cashOut' && <><button className="text-sm font-bold text-primary underline" onClick={()=>setCounter(v=>!v)}>{counter?'Hide counter':'Count chips by color'}</button>{counter&&<ChipCounter rate={exchangeRate} onApply={units=>{setAmount(String(units));setCounter(false);}}/>}</>}
               <div className="flex gap-3 pt-6">
                 <button 
                   disabled={saving}
