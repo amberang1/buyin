@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Player, ExchangeRate } from '../types';
 import { Wallet, LogOut } from 'lucide-react';
+import { sumCents, money } from '../ledger.mjs';
 
 type Props = {
   players: Player[];
@@ -40,21 +41,21 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
   return (
     <>
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8 md:mb-12">
-        <div className="md:col-span-2 bg-surface-container-lowest p-6 md:p-8 rounded-xl shadow-[0_12px_32px_rgba(62,94,149,0.06)] flex flex-col justify-between border-b-2 border-primary overflow-hidden relative">
+        <div className="md:col-span-2 club-hero p-6 md:p-8 flex flex-col justify-between overflow-hidden relative">
           <div className="relative z-10">
-            <p className="text-[10px] md:text-xs uppercase tracking-[0.1em] text-outline mb-1 md:mb-2 font-bold">Total Pot</p>
-            <h2 className="text-4xl md:text-5xl font-extrabold text-on-surface tracking-tighter font-headline">${totalPot.toFixed(2)}</h2>
+            <p className="text-[10px] md:text-xs uppercase tracking-[0.1em] text-[#d7c69f] mb-1 md:mb-2 font-bold">Money on table</p>
+            <h2 className="text-4xl md:text-5xl font-extrabold text-[#fffdf8] tracking-tighter font-headline">${totalPot.toFixed(2)}</h2>
           </div>
-          <div className="mt-6 md:mt-8 flex items-center gap-2 text-primary">
+          <div className="mt-6 md:mt-8 flex items-center gap-2 text-[#dae5d9]">
             <Wallet className="w-4 h-4 md:w-5 md:h-5" />
-            <span className="text-xs md:text-sm font-semibold">Live reconciliation active</span>
+            <span className="text-xs md:text-sm font-semibold">Live ledger · after cash-outs</span>
           </div>
           <div className="absolute right-0 top-0 w-32 h-full bg-gradient-to-l from-primary/5 to-transparent"></div>
         </div>
 
         <div className="flex flex-col gap-4 md:gap-6">
           <div className="bg-surface-container-low p-4 md:p-6 rounded-xl flex flex-col">
-            <p className="text-[10px] md:text-xs uppercase tracking-[0.1em] text-outline mb-1 font-bold">Active Seats</p>
+            <p className="text-[10px] md:text-xs uppercase tracking-[0.1em] text-outline mb-1 font-bold">Players</p>
             <div className="flex items-end gap-2">
               <span className="text-2xl md:text-3xl font-bold text-on-surface">{players.length}</span>
             </div>
@@ -64,7 +65,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
             className="w-full py-4 md:py-6 px-4 bg-gradient-to-br from-error to-error-dim text-on-error rounded-xl font-headline font-bold text-base md:text-lg tracking-tight hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-error/20 flex items-center justify-center gap-2"
           >
             <LogOut className="w-5 h-5" />
-            CASH OUT GAME
+            End game & settle
           </button>
         </div>
       </section>
@@ -72,14 +73,14 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
       <div className="flex justify-between items-end mb-6">
         <div>
           <h3 className="text-xl md:text-2xl font-bold text-on-surface tracking-tight font-headline">Active Players</h3>
-          <p className="text-on-surface-variant text-xs md:text-sm">Real-time ledger of current game participants</p>
+          <p className="text-on-surface-variant text-xs md:text-sm">Track buy-ins and chips returned during the game.</p>
         </div>
       </div>
 
       <div className="space-y-3 md:space-y-4">
         {players.map((player, idx) => {
-          const currentBuyIn = player.buyIns.reduce((a, b) => a + b, 0);
-          const currentCashOut = player.cashOuts.reduce((a, b) => a + b, 0);
+          const currentBuyIn = sumCents(player.buyIns)/100;
+          const currentCashOut = sumCents(player.cashOuts)/100;
           
           return (
             <div key={player.id} className="group bg-surface-container-lowest p-4 md:p-5 flex flex-col sm:flex-row sm:items-center justify-between transition-all hover:bg-surface-container-low border-l-4 border-transparent hover:border-primary shadow-sm rounded-xl gap-4">
