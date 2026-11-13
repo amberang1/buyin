@@ -11,3 +11,7 @@ test('guest sees their request status and cannot approve requests or view anothe
 test('new late arrival can enter a name and initial buy-in',()=>{const html=renderToStaticMarkup(React.createElement(Panel,{...props,uid:'late'}));assert.match(html,/Your name/);assert.match(html,/Initial buy-in/);assert.match(html,/Join as a player/);});
 test('partial payout shows actual unpaid balance and guest has no payment controls',()=>{const html=renderToStaticMarkup(React.createElement(PaymentTracker,{player,payment:{paidCents:1000},canEdit:false}));assert.match(html,/Partly paid/);assert.match(html,/\$20\.00/);assert.doesNotMatch(html,/Mark fully paid|Save amount/);});
 test('fully paid and zero payout states are distinct',()=>{assert.match(renderToStaticMarkup(React.createElement(PaymentTracker,{player,payment:{paidCents:3000},canEdit:false})),/>Paid</);assert.match(renderToStaticMarkup(React.createElement(PaymentTracker,{player:{...player,finalStackValue:0},canEdit:false})),/No payout due/);});
+test('one-device operator is not required to register their own player seat',()=>{
+ const html=renderToStaticMarkup(React.createElement(Panel,{...props,uid:'host',host:true}));
+ assert.match(html,/Manage the table/);assert.match(html,/Link my own player seat \(optional\)/);assert.doesNotMatch(html,/Join as a player|Initial buy-in/);
+});

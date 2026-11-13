@@ -3,6 +3,7 @@ import type {Player,PlayerRequest,ExchangeRate,Phase} from '../types';
 import {moneyCents,chipsToCents,cashOutCents,formatMoney} from '../ledger.mjs';
 type Props={uid:string;host:boolean;phase:Phase;players:Player[];requests:PlayerRequest[];rate:ExchangeRate;ready:boolean;onAction:(action:string,data:unknown)=>Promise<boolean>};
 export default function ParticipationPanel({uid,host,phase,players,requests,rate,ready,onAction}:Props){
+ const [showSelf,setShowSelf]=useState(false);
  const [name,setName]=useState(''),[initial,setInitial]=useState(''),[seat,setSeat]=useState('');
  const [kind,setKind]=useState<'buyIn'|'cashOut'>('buyIn'),[amount,setAmount]=useState(''),[busy,setBusy]=useState(false);
  const own=players.find(p=>p.ownerUid===uid),open=phase==='setup'||phase==='active';
@@ -11,9 +12,10 @@ export default function ParticipationPanel({uid,host,phase,players,requests,rate
  let preview='',valid=false;
  try{if(amount.trim()&&Number(amount)>0){const cents=kind==='buyIn'?moneyCents(Number(amount)):chipsToCents(Number(amount),rate);valid=cents>0;preview=formatMoney(cents);}}catch{}
  return <section className="club-card p-5 space-y-4">
-  <div><h2 className="text-xl font-bold">{own?'Your seat · '+own.name:'Take your seat'}</h2><p className="text-sm text-on-surface-variant">{own?'Your seat is saved on this device. Money entries need host confirmation.':'Add your name, or ask the host to link a seat already on the list.'}</p></div>
+  <div><h2 className="text-xl font-bold">{own?'Your seat · '+own.name:host?'Manage the table':'Take your seat'}</h2><p className="text-sm text-on-surface-variant">{own?'Your seat is saved on this device. Money entries need host confirmation.':host?'You can manage all players on this device. Other players can optionally join using the room code.':'Add your name, or ask the host to link a seat already on the list.'}</p></div>
   {!ready?<p role="status">Loading requests…</p>:<>
-  {!own&&open&&!pending&&<div className="space-y-4">
+  {host&&!own&&open&&!pending&&<button className="club-secondary w-full" onClick={()=>setShowSelf(v=>!v)}>{showSelf?"Hide my seat options":"Link my own player seat (optional)"}</button>}
+  {!own&&open&&!pending&&(!host||showSelf)&&<div className="space-y-4">
    <form className="space-y-3" onSubmit={e=>{e.preventDefault();void send('enroll',{name,...(initial.trim()?{amount:Number(initial)}:{})});}}>
     <label className="block text-sm">Your name<input className="club-input w-full mt-1" maxLength={49} required value={name} onChange={e=>setName(e.target.value)}/></label>
     <label className="block text-sm">Initial buy-in ($, optional)<input className="club-input w-full mt-1" type="number" inputMode="decimal" min="0.01" max="100000000" step="0.01" value={initial} onChange={e=>setInitial(e.target.value)}/></label>

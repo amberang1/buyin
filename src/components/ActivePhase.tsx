@@ -9,10 +9,15 @@ type Props = {
   onTransaction: (playerId: string, type: 'buyIn' | 'cashOut', amount: number) => Promise<boolean>;
   exchangeRate: ExchangeRate;
   onSettle: () => void;
+  onAddPlayer?: (name:string,amount:number)=>Promise<boolean>;
   onUndo: (playerId:string,type:'buyIn'|'cashOut')=>Promise<boolean>;
 };
 
-export default function ActivePhase({ players, onTransaction, exchangeRate, onSettle, onUndo }: Props) {
+export default function ActivePhase({ players, onTransaction, exchangeRate, onSettle, onUndo, onAddPlayer }: Props) {
+  const [showAdd,setShowAdd]=useState(false);
+  const [newName,setNewName]=useState('');
+  const [newBuyIn,setNewBuyIn]=useState('');
+  const [adding,setAdding]=useState(false);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [transactionType, setTransactionType] = useState<'buyIn' | 'cashOut' | null>(null);
   const [amount, setAmount] = useState('');
@@ -46,6 +51,8 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
     }
   };
 
+  let validNew=false;try{validNew=!!newName.trim()&&newName.trim().length<=49&&moneyCents(Number(newBuyIn))>0;}catch{}
+  const addPlayer=async()=>{if(!onAddPlayer||!validNew||adding||saving||undoing)return;if(!confirm('Confirm '+newName.trim()+"’s buy-in has been received?"))return;setAdding(true);try{if(await onAddPlayer(newName.trim(),Number(newBuyIn))){setNewName('');setNewBuyIn('');setShowAdd(false);}}finally{setAdding(false)}};
   return (
     <>
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8 md:mb-12">
@@ -86,6 +93,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
         </div>
       </div>
 
+      {onAddPlayer&&<section className="club-card p-4 space-y-3"><button className="club-secondary w-full" disabled={adding||saving||undoing||players.length>=30} onClick={()=>setShowAdd(v=>!v)}>{showAdd?'Cancel adding player':'Add late player'}</button>{showAdd&&<form className="space-y-3" onSubmit={e=>{e.preventDefault();void addPlayer();}}><label className="block text-sm">Player name<input className="club-input w-full mt-1" maxLength={49} required value={newName} onChange={e=>setNewName(e.target.value)}/></label><label className="block text-sm">Buy-in received ($)<input type="number" inputMode="decimal" min="0.01" max="100000000" step="0.01" className="club-input w-full mt-1" required value={newBuyIn} onChange={e=>setNewBuyIn(e.target.value)}/></label><button className="club-button w-full" disabled={adding||saving||undoing||!validNew}>{adding?'Adding…':'Add player & buy-in'}</button></form>}</section>}
       <div className="space-y-3 md:space-y-4">
         {players.map((player, idx) => {
           const currentBuyIn = sumCents(player.buyIns)/100;
@@ -218,4 +226,3 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
     </>
   );
 }
-

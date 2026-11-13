@@ -1,5 +1,5 @@
 import { isRoomCode, createRoomCode } from './src/room-codes.mjs';
-import { mutateParticipation, participationActions, assertNoPending, reverseUndoneRequest } from './src/participation.mjs';
+import { mutateParticipation, participationActions, assertNoPending, reverseUndoneRequest, canAccessLedger } from './src/participation.mjs';
 import { validateSettings } from './src/ledger.mjs';
 import { mutateRoom } from './src/mutations.mjs';
 import 'dotenv/config';
@@ -182,7 +182,7 @@ app.post('/api/ledger', express.json({limit:'6mb'}), async(req,res)=>{
         };
         const gameDoc=await read('games/'+gameId);
         const game=gameDoc?decode({mapValue:{fields:gameDoc.fields}}):null;
-        if(!game||(game.hostId!==uid&&(!participationActions.includes(action)||!await read('games/'+gameId+'/members/'+uid)))){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.status(403).json({error:'Room access denied.'});}
+        if(!canAccessLedger(game,uid,!!(game&&game.hostId!==uid&&await read('games/'+gameId+'/members/'+uid)),action)){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.status(403).json({error:'Room access denied.'});}
         const receipt='games/'+gameId+'/operations/'+uid+'-'+requestId;
         if(await read(receipt)||(game.hostId===uid&&await read('games/'+gameId+'/operations/'+requestId))){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.json({ok:true});}
         const query=await firestoreRequest(documents+'/games/'+gameId+':runQuery','POST',{transaction,structuredQuery:{from:[{collectionId:'players'}]}});
@@ -195,7 +195,7 @@ app.post('/api/ledger', express.json({limit:'6mb'}), async(req,res)=>{
         const payments=action==='payment'?await readCollection('payments'):[];
         let next;
         if(participationActions.includes(action))next=mutateParticipation(game,original,requests,payments,uid,action,data,requestId,new Date().toISOString());
-        else {assertNoPending(requests,action,data);next=mutateRoom(game,original,action,data);if(action==='undo')next.requests=reverseUndoneRequest(requests,original,data,uid,new Date().toISOString());}
+        else {assertNoPending(requests,action,data);next=mutateRoom(game,original,action,action==='addPlayer'?{...data,id:requestId}:data);if(action==='undo')next.requests=reverseUndoneRequest(requests,original,data,uid,new Date().toISOString());}
 
         const writes=[writeDocument('games/'+gameId,encode(next.game).mapValue.fields)];
         for(const player of next.players){

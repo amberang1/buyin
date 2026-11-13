@@ -45,3 +45,9 @@ Final results show profit/loss separately from final payouts. Host-recorded paym
 Deploy the updated frontend, backend and Firestore rules together. Request reads are limited to the host and the requesting guest; room members can read payment statuses. Every write is validated on the backend, including membership and seat ownership checks. Added tests cover permission failures, concurrent claims, duplicate confirmation, late entry, stale cash-out previews and partial payments; UI rendering tests cover restored identities, request visibility and payout labels.
 
 New rooms use four-digit codes, including leading zeros. Existing six-digit invitations remain accepted in manual join, invite links, and API responses. Short-code creation remains atomic and retries collisions without overwriting existing rooms. Internal room IDs and access rules are unchanged.
+
+## One-device and shared-device usage
+
+One operator can manage the entire roster without registering a personal seat. Setup supports adding everyone; active play includes a host-only Add late player form that records the buy-in received. Players using other devices may still join and request links to those seats. A host's personal seat is optional.
+
+`tests/usage-flows.test.mjs` runs complete one-operator and multi-identity journeys through setup, rebuys, late arrivals, cash-outs, finalization and payouts, verifies identical final balances, and rejects guest direct writes and stale host edits. These use the actual shared validation/mutation functions, not live Firebase or interactive phone sessions.

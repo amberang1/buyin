@@ -32,6 +32,14 @@ export function mutateRoom(game, original, action, data) {
       else if(index>=0)players.splice(index,1);
     }
     if(players.length>30)fail('A room supports up to 30 players.');
+  } else if(action==='addPlayer'){
+    if(game.status!=='active')fail('Add late players only during active play.');
+    if(players.length>=30||players.some(p=>p.id===data.id))fail('Player limit reached or seat already exists.');
+    const name=typeof data.name==='string'?data.name.trim():'';
+    if(players.some(p=>p.name.trim().toLowerCase()===name.toLowerCase()))fail('That player is already on the list.');
+    const amount=moneyCents(data.amount);if(amount<=0)fail('Enter the buy-in received.');
+    const player={id:data.id,name,buyIns:[amount/100],cashOuts:[],finalStackValue:0};
+    validatePlayer(player);players.push(player);
   } else if(action==='phase'){
     if(game.status!==data.from)fail('Game phase changed. Review the latest screen.');
     if(!['setup:active','active:settlement','settlement:active'].includes(data.from+':'+data.to))fail('Invalid phase transition.');

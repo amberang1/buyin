@@ -270,6 +270,7 @@ export default function App() {
           <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <ActivePhase 
             players={players}
+            onAddPlayer={isHost?(name,amount)=>saveAction('addPlayer',{name,amount}):undefined}
             onTransaction={handleRecordTransaction}
             onUndo={handleUndoTransaction}
             exchangeRate={exchangeRate}

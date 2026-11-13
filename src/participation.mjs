@@ -95,3 +95,7 @@ export function reverseUndoneRequest(requests,players,data,uid,now){
  if(request){request.status='reversed';request.reason='Entry undone by host';request.resolvedAt=now;request.resolvedBy=uid;}
  return next;
 }
+
+export function canAccessLedger(game,uid,isMember,action){
+ return !!game&&!!uid&&(game.hostId===uid||isMember===true&&participationActions.includes(action));
+}
