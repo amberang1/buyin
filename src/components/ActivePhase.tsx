@@ -9,13 +9,16 @@ type Props = {
   onTransaction: (playerId: string, type: 'buyIn' | 'cashOut', amount: number) => Promise<boolean>;
   exchangeRate: ExchangeRate;
   onSettle: () => void;
+  onUndo: (playerId:string,type:'buyIn'|'cashOut')=>Promise<boolean>;
 };
 
-export default function ActivePhase({ players, onTransaction, exchangeRate, onSettle }: Props) {
+export default function ActivePhase({ players, onTransaction, exchangeRate, onSettle, onUndo }: Props) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [transactionType, setTransactionType] = useState<'buyIn' | 'cashOut' | null>(null);
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
+  const [undoing,setUndoing]=useState(false);
+  const undo=async(id:string,type:'buyIn'|'cashOut')=>{if(undoing||saving)return;setUndoing(true);try{await onUndo(id,type)}finally{setUndoing(false)}};
   const [counter, setCounter] = useState(false);
 
   const totals=ledger(players);
@@ -121,6 +124,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 )}
               </div>
 
+              <div className="flex flex-col gap-2 w-full sm:w-auto">
               <div className="flex items-center gap-2 md:gap-3 w-full sm:w-auto">
                 <button 
                   onClick={() => {
@@ -142,6 +146,11 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 >
                   Cash-out
                 </button>
+              </div>
+              {(player.buyIns.length>1||player.cashOuts.length>0)&&<div className="flex flex-wrap gap-3 text-xs text-outline">
+                {player.buyIns.length>1&&<button disabled={undoing||saving} className="underline" onClick={()=>undo(player.id,'buyIn')}>Undo last rebuy</button>}
+                {player.cashOuts.length>0&&<button disabled={undoing||saving} className="underline" onClick={()=>undo(player.id,'cashOut')}>Undo last cash-out</button>}
+              </div>}
               </div>
             </div>
           );
