@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Player, ExchangeRate } from '../types';
 import { Wallet, LogOut } from 'lucide-react';
-import { sumCents, money } from '../ledger.mjs';
+import { sumCents, money, ledger, chipsToCents, moneyCents, cashToChips, formatMoney } from '../ledger.mjs';
+import ChipCounter from './ChipCounter';
 
 type Props = {
   players: Player[];
@@ -16,22 +17,26 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
   const [amount, setAmount] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const totalPot = players.reduce((sum, p) => {
-    const totalIn = p.buyIns.reduce((a, b) => a + b, 0);
-    const totalOut = p.cashOuts.reduce((a, b) => a + b, 0);
-    return sum + (totalIn - totalOut);
-  }, 0);
-
+  const totals=ledger(players);
+  const totalPot=totals.tableCents/100;
+  const [showCounter,setShowCounter]=useState(false);
+  let preview='',validAmount=false;
+  try{if(amount.trim() && Number(amount)>0){
+    const n=Number(amount);
+    const cents=transactionType==='cashOut'?chipsToCents(n,exchangeRate):moneyCents(n);
+    preview=transactionType==='cashOut'?formatMoney(cents):cashToChips(n,exchangeRate).toLocaleString()+' chip units';
+    validAmount=cents>0&&(transactionType!=='cashOut'||cents<=totals.tableCents);
+  }}catch{}
   const handleTransaction = async () => {
     if (!selectedPlayerId || !transactionType || saving) return;
     const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) return;
+    if (!validAmount) return;
     setSaving(true);
     try {
       if (await onTransaction(selectedPlayerId, transactionType, value)) {
         setSelectedPlayerId(null);
         setTransactionType(null);
-        setAmount('');
+        setAmount(''); setShowCounter(false);
       }
     } finally {
       setSaving(false);
@@ -46,6 +51,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
             <p className="text-[10px] md:text-xs uppercase tracking-[0.1em] text-[#d7c69f] mb-1 md:mb-2 font-bold">Money on table</p>
             <h2 className="text-4xl md:text-5xl font-extrabold text-[#fffdf8] tracking-tighter font-headline">${totalPot.toFixed(2)}</h2>
           </div>
+          <div className="grid grid-cols-2 gap-3 mt-4 text-sm"><div><p className="text-[#dae5d9] text-xs">Total buy-ins</p><strong>{formatMoney(totals.inCents)}</strong></div><div><p className="text-[#dae5d9] text-xs">Earlier cash-outs</p><strong>{formatMoney(totals.midCents)}</strong></div></div>
           <div className="mt-6 md:mt-8 flex items-center gap-2 text-[#dae5d9]">
             <Wallet className="w-4 h-4 md:w-5 md:h-5" />
             <span className="text-xs md:text-sm font-semibold">Live ledger · after cash-outs</span>
@@ -118,7 +124,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 <button 
                   onClick={() => {
                     setSelectedPlayerId(player.id);
-                    setTransactionType('buyIn');
+                    setTransactionType('buyIn'); setShowCounter(false); setAmount('');
                   }}
                   className="flex-1 sm:flex-none px-3 md:px-4 py-2.5 md:py-2 bg-secondary-container text-on-secondary-container rounded-lg font-semibold text-sm transition-colors hover:bg-secondary/20 active:scale-95"
                 >
@@ -127,7 +133,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 <button 
                   onClick={() => {
                     setSelectedPlayerId(player.id);
-                    setTransactionType('cashOut');
+                    setTransactionType('cashOut'); setShowCounter(false); setAmount('');
                   }}
                   className="flex-1 sm:flex-none px-3 md:px-4 py-2.5 md:py-2 text-error font-semibold text-sm border border-error/20 rounded-lg hover:bg-error/5 transition-colors active:scale-95"
                 >
@@ -142,7 +148,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
       {/* Transaction Modal */}
       {selectedPlayerId && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-surface-container-lowest rounded-2xl p-6 w-full max-w-md shadow-2xl animate-in fade-in zoom-in duration-200">
+          <div className="bg-surface-container-lowest rounded-2xl p-5 w-full max-w-md max-h-[88dvh] overflow-y-auto shadow-2xl animate-in fade-in zoom-in duration-200">
             <h3 className="text-xl font-bold mb-2 font-headline text-on-surface">
               {transactionType === 'buyIn' ? 'Add Buy-in' : 'Player Cash-out'}
             </h3>
@@ -164,11 +170,10 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                   className="w-full mt-1 border-b-2 border-outline-variant/50 focus:border-primary bg-transparent p-2 text-2xl md:text-3xl font-bold outline-none text-on-surface"
                   autoFocus
                 />
-                {transactionType === 'cashOut' && amount && !isNaN(parseFloat(amount)) && (
-                  <p className="text-xs text-primary font-bold mt-2">
-                    = ${(parseFloat(amount) * (exchangeRate.baseCurrency / exchangeRate.chips)).toFixed(2)}
-                  </p>
-                )}
+                {preview && <p className="text-sm text-primary font-bold mt-2">= {preview}</p>}
+                {transactionType==='cashOut' && <button type="button" className="club-secondary w-full mt-3" onClick={()=>setShowCounter(v=>!v)}>{showCounter?'Hide chip calculator':'Count chips by color'}</button>}
+                {transactionType==='cashOut' && showCounter && <ChipCounter rate={exchangeRate} onApply={units=>{setAmount(String(units));setShowCounter(false)}}/>}
+                {amount&&preview&&!validAmount&&<p className="text-xs text-error mt-2">Amount is invalid or exceeds the available table balance.</p>}
               </div>
               
               <div className="flex gap-3 pt-6">
@@ -185,7 +190,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
                 </button>
                 <button 
                   onClick={handleTransaction}
-                  disabled={saving || !Number.isFinite(Number(amount)) || Number(amount) <= 0}
+                  disabled={saving || !validAmount}
                   className={`flex-1 py-3.5 font-bold rounded-xl transition-colors shadow-sm ${
                     transactionType === 'buyIn' 
                       ? 'bg-secondary text-on-secondary hover:bg-secondary-dim' 
