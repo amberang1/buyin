@@ -7,7 +7,7 @@ import SettlementPhase from './components/SettlementPhase';
 import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
 import { Spade, Settings, Layers, LogOut } from 'lucide-react';
-import { reconciliation } from './ledger.mjs';
+import { reconciliation, ledger, moneyCents, chipsToCents } from './ledger.mjs';
 import { auth, db, ensureAnonymousUser } from './firebase';
 import { roomRequest } from './rooms';
 import { doc, collection, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
@@ -207,9 +207,16 @@ export default function App() {
         const rate = game.data().exchangeRate as ExchangeRate;
         if (!Number.isFinite(rate.baseCurrency) || rate.baseCurrency <= 0 || !Number.isFinite(rate.chips) || rate.chips <= 0) throw new Error('Invalid table exchange rate.');
         if (rate.baseCurrency !== exchangeRate.baseCurrency || rate.chips !== exchangeRate.chips) throw new Error('Exchange rate changed. Review the latest rate and try again.');
-        const raw = type === 'buyIn' ? amount : amount * rate.baseCurrency / rate.chips;
-        const value = Math.round(raw * 100) / 100;
-        if (!Number.isSafeInteger(Math.round(raw * 100)) || value <= 0) throw new Error('Amount must be at least one cent and within the supported range.');
+        const cents = type==='buyIn'?moneyCents(amount):chipsToCents(amount,rate);
+        if(cents<=0) throw new Error('Amount must be at least one cent.');
+        // Read the other roster entries in the same transaction to prevent
+        // concurrent cash-outs from exceeding the cash remaining on the table.
+        if(type==='cashOut'){
+          const others=await Promise.all(players.filter(p=>p.id!==playerId).map(p=>tx.get(doc(db,'games',gameId,'players',p.id))));
+          const current=[{...player.data(),id:player.id},...others.filter(s=>s.exists()).map(s=>({...s.data(),id:s.id}))] as Player[];
+          if(cents>ledger(current).tableCents)throw new Error('Cash-out exceeds the table balance.');
+        }
+        const value=cents/100;
         const field = type === 'buyIn' ? 'buyIns' : 'cashOuts';
         tx.update(ref, { [field]: [...(player.data()[field] as number[]), value] });
       });
