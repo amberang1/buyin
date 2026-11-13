@@ -7,8 +7,9 @@ import SettlementPhase from './components/SettlementPhase';
 import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
 import { Menu, History, Settings, Layers, LogOut } from 'lucide-react';
-import { db } from './firebase';
-import { doc, collection, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
+import { auth, db } from './firebase';
+import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { doc, collection, onSnapshot, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
 
 function samePlayer(a?: Player, b?: Player) {
   if (!a || !b) return a === b;
@@ -19,19 +20,26 @@ function samePlayer(a?: Player, b?: Player) {
 }
 
 export default function App() {
-  const [userId] = useState(() => {
-    let id = localStorage.getItem('poker_user_id');
-    if (!id) {
-      id = Math.random().toString(36).substring(2, 15);
-      localStorage.setItem('poker_user_id', id);
-    }
-    return id;
-  });
-
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authError, setAuthError] = useState(false);
+  const [hostId, setHostId] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+  const isHost = !!userId && userId === hostId;
+  useEffect(() => {
+    let signing = false;
+    return onAuthStateChanged(auth, user => {
+      if (user) { setUserId(user.uid); setAuthError(false); }
+      else if (!signing) {
+        setUserId(null); signing = true;
+        signInAnonymously(auth).catch(() => setAuthError(true)).finally(() => { signing = false; });
+      }
+    });
+  }, []);
   const [phase, setPhase] = useState<Phase>('home');
   const [gamePhase, setGamePhase] = useState<Phase>('home');
   const [gameId, setGameId] = useState<string | null>(() => {
-    return localStorage.getItem('poker_current_game_id') || null;
+    const saved = localStorage.getItem('poker_current_game_id');
+    return saved && /^[a-f0-9]{32}$/.test(saved) ? saved : null;
   });
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate>({ 
     baseCurrency: 20, 
@@ -53,12 +61,13 @@ export default function App() {
 
   // Listen to Firebase when gameId is set
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId || !userId) return;
 
     const gameRef = doc(db, 'games', gameId);
     const unsubscribeGame = onSnapshot(gameRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        setHostId(data.hostId);
         if (data.status) {
           setGamePhase(data.status as Phase);
           setPhase(current => current === 'settings' ? current : data.status as Phase);
@@ -74,7 +83,11 @@ export default function App() {
         setPhase('home');
         alert('Game not found. Check the room code.');
       }
-    }, error => { console.error(error); alert('Unable to load game. Please try again.'); });
+    }, error => {
+      console.error(error); setGameId(null); setHostId(null); setPlayers([]); setGamePhase('home'); setPhase('home');
+      localStorage.removeItem('poker_current_game_id');
+      alert('Room access denied. Check your invitation.');
+    });
 
     const playersRef = collection(db, 'games', gameId, 'players');
     const unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
@@ -89,40 +102,39 @@ export default function App() {
       unsubscribeGame();
       unsubscribePlayers();
     };
-  }, [gameId]); // Removed phase from dependencies to avoid infinite loops
+  }, [gameId, userId]); // Removed phase from dependencies to avoid infinite loops
 
   const handleCreateGame = async () => {
+    if (!userId || joining) return;
+    setJoining(true);
     try {
-      let newGameId = '';
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const candidate = Math.floor(1000 + Math.random() * 9000).toString();
-        const created = await runTransaction(db, async tx => {
-          const ref = doc(db, 'games', candidate);
-          if ((await tx.get(ref)).exists()) return false;
-          tx.set(ref, { status: 'setup', exchangeRate, createdAt: new Date().toISOString(), hostId: userId });
-          return true;
-        });
-        if (created) { newGameId = candidate; break; }
-      }
-      if (!newGameId) throw new Error('Could not allocate a room code. Try again.');
-      setPlayers([]);
-      setGamePhase('setup');
-      setGameId(newGameId);
-      localStorage.setItem('poker_current_game_id', newGameId);
-      setPhase('setup');
-    } catch (error: any) {
-      console.error("Error creating game:", error);
-      alert(`Failed to create game: ${error.message || 'Unknown error'}`);
-    }
+      const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
+      await setDoc(doc(db, 'games', id), { status: 'setup', exchangeRate, createdAt: new Date().toISOString(), hostId: userId });
+      setPlayers([]); setHostId(userId); setGamePhase('setup'); setGameId(id);
+      localStorage.setItem('poker_current_game_id', id); setPhase('setup');
+    } catch (error) { console.error(error); alert('Could not create room.'); }
+    finally { setJoining(false); }
   };
-
-  const handleJoinGame = (code: string) => {
-    setGameId(code);
-    localStorage.setItem('poker_current_game_id', code);
-    // The onSnapshot will automatically update the phase and players
+  const handleJoinGame = async (code: string) => {
+    if (!userId || joining || !/^[a-f0-9]{32}$/.test(code)) return;
+    setJoining(true);
+    try {
+      const game = doc(db, 'games', code);
+      let accessible = false;
+      try { accessible = (await getDoc(game)).exists(); } catch {}
+      if (!accessible) {
+        const member = doc(db, 'games', code, 'members', userId);
+        if (!(await getDoc(member)).exists()) await setDoc(member, { uid: userId });
+        if (!(await getDoc(game)).exists()) throw new Error('Room unavailable');
+      }
+      setHostId(null); setPlayers([]); setGameId(code);
+      localStorage.setItem('poker_current_game_id', code);
+    } catch (error) { console.error(error); alert('Could not join. Check the code; completed rooms do not accept new guests.'); }
+    finally { setJoining(false); }
   };
 
   const handleSetExchangeRate = (newRate: ExchangeRate) => {
+    if (gameId && (!isHost || gamePhase !== 'setup')) return;
     if (!Number.isFinite(newRate.baseCurrency) || newRate.baseCurrency <= 0 ||
         !Number.isFinite(newRate.chips) || newRate.chips <= 0 ||
         Object.values(newRate.chipValues).some(v => !Number.isFinite(v) || v < 0)) return;
@@ -137,7 +149,7 @@ export default function App() {
 
   // The server phase is authoritative. Navigation must not reopen a completed game.
   const advancePhase = async (from: Phase, to: Phase) => {
-    if (!gameId) return;
+    if (!gameId || !isHost) return;
     try {
       await runTransaction(db, async tx => {
         const ref = doc(db, 'games', gameId);
@@ -155,7 +167,7 @@ export default function App() {
   // Setup edits write only changed documents and reject stale edits instead of
   // overwriting another device's work. Snapshots update the local UI after commit.
   const handleSetPlayers = async (newPlayersOrCb: Player[] | ((prev: Player[]) => Player[])) => {
-    if (!gameId) return false;
+    if (!gameId || !isHost) return false;
     const next = typeof newPlayersOrCb === 'function' ? newPlayersOrCb(players) : newPlayersOrCb;
     const before = new Map(players.map(p => [p.id, p]));
     const after = new Map(next.map(p => [p.id, p]));
@@ -187,7 +199,7 @@ export default function App() {
   // Re-read the selected player in a transaction, so simultaneous entries
   // append independently even when the amounts are identical.
   const handleRecordTransaction = async (playerId: string, type: 'buyIn' | 'cashOut', amount: number) => {
-    if (!gameId || !Number.isFinite(amount) || amount <= 0) return false;
+    if (!gameId || !isHost || !Number.isFinite(amount) || amount <= 0) return false;
     try {
       await runTransaction(db, async tx => {
         const game = await tx.get(doc(db, 'games', gameId));
@@ -215,7 +227,7 @@ export default function App() {
 
   // Save all final stacks and the results phase together, or save neither.
   const handleShowResults = async (next: Player[]) => {
-    if (!gameId || !next.length) return false;
+    if (!gameId || !isHost || !next.length) return false;
     try {
       await runTransaction(db, async tx => {
         const gameRef = doc(db, 'games', gameId);
@@ -263,6 +275,7 @@ export default function App() {
     setPhase('home');
   };
 
+  if (!userId) return <main className="p-8 text-center">{authError ? "Sign-in failed. Enable anonymous Firebase authentication and reload." : "Connecting securely..."}</main>;
   return (
     <div className="bg-surface text-on-surface min-h-screen pb-28 md:pb-24 font-body">
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl flex justify-between items-center px-4 md:px-6 py-4 border-b border-outline-variant/10">
@@ -272,9 +285,10 @@ export default function App() {
         </div>
         <div className="flex items-center gap-3">
           {gameId && (
-            <div className="px-3 py-1 bg-primary/10 text-primary font-bold rounded-lg text-sm tracking-widest">
-              ROOM: {gameId}
-            </div>
+            <button className="px-3 py-2 bg-primary/10 text-primary font-bold rounded-lg text-sm" onClick={async () => {
+              try { await navigator.clipboard.writeText(gameId); alert('Private room code copied. Share only with trusted participants.'); }
+              catch { window.prompt('Private room code', gameId); }
+            }}>Copy room code</button>
           )}
           <div className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden">
             <div className="w-full h-full bg-outline-variant/30" />
@@ -283,13 +297,16 @@ export default function App() {
       </header>
 
       <main className="pt-24 px-4 md:px-6 max-w-5xl mx-auto space-y-8 md:space-y-12">
+        {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Guest view: only the host can edit this ledger.</p>}
         {phase === 'home' && (
           <HomePhase 
+            busy={joining}
             onCreateGame={handleCreateGame}
             onJoinGame={handleJoinGame}
           />
         )}
         {phase === 'setup' && (
+          <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <SetupPhase 
             exchangeRate={exchangeRate} 
             setExchangeRate={handleSetExchangeRate} 
@@ -297,21 +314,26 @@ export default function App() {
             setPlayers={handleSetPlayers}
             onStart={handleStartSession}
           />
+          </fieldset>
         )}
         {phase === 'active' && (
+          <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <ActivePhase 
             players={players}
             onTransaction={handleRecordTransaction}
             exchangeRate={exchangeRate}
             onSettle={handleSettleGame}
           />
+          </fieldset>
         )}
         {phase === 'settlement' && (
+          <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <SettlementPhase 
             players={players}
             exchangeRate={exchangeRate}
             onComplete={handleShowResults}
           />
+          </fieldset>
         )}
         {phase === 'results' && (
           <ResultsPhase 
@@ -343,7 +365,7 @@ export default function App() {
           
           <button 
             onClick={() => gamePhase === 'active' ? handleSettleGame() : setPhase('settlement')}
-            disabled={gamePhase !== 'active' && gamePhase !== 'settlement'}
+            disabled={!isHost || (gamePhase !== 'active' && gamePhase !== 'settlement')}
             className={`flex flex-col items-center justify-center transition-colors ${phase === 'settlement' ? 'text-primary' : 'text-on-surface-variant'} disabled:opacity-30`}
           >
             <LogOut className="w-6 h-6 mb-1" />
