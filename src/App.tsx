@@ -8,7 +8,7 @@ import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
 import { Spade, Settings, Layers, LogOut } from 'lucide-react';
 import { reconciliation, ledger, moneyCents, chipsToCents } from './ledger.mjs';
-import { auth, db, ensureAnonymousUser } from './firebase';
+import { auth, db, ensureAnonymousUser, projectId } from './firebase';
 import { roomRequest } from './rooms';
 import { doc, collection, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 
@@ -36,7 +36,7 @@ export default function App() {
   const [phase, setPhase] = useState<Phase>('home');
   const [gamePhase, setGamePhase] = useState<Phase>('home');
   const [gameId, setGameId] = useState<string | null>(() => {
-    const saved = localStorage.getItem('poker_current_game_id');
+    const saved = localStorage.getItem('poker_current_game_id_' + projectId);
     return saved && /^[a-f0-9]{32}$/.test(saved) ? saved : null;
   });
   const [roomCode, setRoomCode] = useState('');
@@ -58,7 +58,7 @@ export default function App() {
   });
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<any[]>(() => {
-    const saved = localStorage.getItem('poker_history');
+    const saved = localStorage.getItem('poker_history_' + projectId);
     try { return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
 
@@ -96,7 +96,7 @@ export default function App() {
   }, [gameId, userId, retry]);
 
   const openRoom = (id: string) => {
-    localStorage.setItem('poker_current_game_id', id);
+    localStorage.setItem('poker_current_game_id_' + projectId, id);
     const url = new URL(window.location.href);
     url.searchParams.delete('room');
     window.history.replaceState(null, '', url);
@@ -294,7 +294,7 @@ export default function App() {
       };
       const updatedHistory = [newHistoryItem, ...history].slice(0, 20);
       setHistory(updatedHistory);
-      localStorage.setItem('poker_history', JSON.stringify(updatedHistory));
+      localStorage.setItem('poker_history_' + projectId, JSON.stringify(updatedHistory));
     }
     handleLeaveGame();
   };
@@ -302,7 +302,7 @@ export default function App() {
   const handleLeaveGame = () => {
     setGameId(null); setHostId(null); setRoomCode(''); setRestoreError('');
     setReadyRoom(null); setReadyPlayers(null); setGamePhase('home');
-    localStorage.removeItem('poker_current_game_id');
+    localStorage.removeItem('poker_current_game_id_' + projectId);
     setPlayers([]); setPhase('home');
   };
 
