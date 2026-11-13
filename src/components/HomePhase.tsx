@@ -2,16 +2,17 @@ import React, { useState } from 'react';
 import { Play, Users } from 'lucide-react';
 
 type Props = {
+  busy: boolean;
   onCreateGame: () => void;
   onJoinGame: (gameId: string) => void;
 };
 
-export default function HomePhase({ onCreateGame, onJoinGame }: Props) {
+export default function HomePhase({ busy, onCreateGame, onJoinGame }: Props) {
   const [joinCode, setJoinCode] = useState('');
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (joinCode.length === 4) {
+    if (/^[a-f0-9]{32}$/.test(joinCode) && !busy) {
       onJoinGame(joinCode);
     }
   };
@@ -25,7 +26,7 @@ export default function HomePhase({ onCreateGame, onJoinGame }: Props) {
 
       <div className="w-full max-w-sm space-y-6">
         <button 
-          onClick={onCreateGame}
+          onClick={onCreateGame} disabled={busy}
           className="w-full py-4 bg-primary text-on-primary font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all text-lg flex items-center justify-center gap-3"
         >
           <Play className="w-5 h-5 fill-current" />
@@ -40,20 +41,20 @@ export default function HomePhase({ onCreateGame, onJoinGame }: Props) {
 
         <form onSubmit={handleJoin} className="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/10 space-y-4">
           <div>
-            <label className="text-xs uppercase font-bold tracking-wider text-outline block mb-2 text-center">Enter 4-Digit Game Code</label>
+            <label className="text-xs uppercase font-bold tracking-wider text-outline block mb-2 text-center">Paste private room code</label>
             <input 
               type="text" 
-              inputMode="numeric"
-              maxLength={4}
+              autoComplete="off" spellCheck={false}
+              maxLength={32}
               value={joinCode}
-              onChange={e => setJoinCode(e.target.value.replace(/\D/g, ''))}
-              placeholder="0000"
-              className="w-full bg-surface-container-low border border-outline-variant/30 focus:border-primary rounded-xl p-4 text-center text-3xl font-bold tracking-[0.5em] outline-none text-on-surface transition-colors"
+              onChange={e => setJoinCode(e.target.value.trim().toLowerCase())}
+              placeholder="Paste room code"
+              className="w-full bg-surface-container-low border border-outline-variant/30 focus:border-primary rounded-xl p-4 text-center text-sm font-mono outline-none text-on-surface transition-colors"
             />
           </div>
           <button 
             type="submit"
-            disabled={joinCode.length !== 4}
+            disabled={busy || !/^[a-f0-9]{32}$/.test(joinCode)}
             className="w-full py-3.5 bg-secondary text-on-secondary font-bold rounded-xl hover:bg-secondary-dim disabled:opacity-50 transition-all flex items-center justify-center gap-2 active:scale-95"
           >
             <Users className="w-5 h-5" />
