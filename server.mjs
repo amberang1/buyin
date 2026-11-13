@@ -137,7 +137,7 @@ app.post('/api/rooms/:action', express.json({ limit: '16kb' }), async (req,res) 
       if (room.fields?.status?.stringValue === 'results') break;
       try {
         await commit([
-          { verify: fullName(gamePath), currentDocument: { updateTime: room.updateTime } },
+          { update: { name: fullName(gamePath), fields: { roomCode: sv(code) } }, updateMask: { fieldPaths: ['roomCode'] }, currentDocument: { updateTime: room.updateTime } },
           writeDocument(memberPath, { uid: sv(uid) })
         ]);
         return res.json({ gameId, roomCode: code });
