@@ -2,6 +2,7 @@ import React,{useState,useEffect} from 'react';
 import { Camera, Sparkles, Loader2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Player, ExchangeRate } from '../types';
 import { scanChips, prepareChipPhoto } from '../scan';
+import ChipCounter from './ChipCounter';
 import { stackTotal, chipCents, money, reconciliation } from '../ledger.mjs';
 import ChipCounter from './ChipCounter';
 type Props={gameId:string;players:Player[];exchangeRate:ExchangeRate;onComplete:(players:Player[])=>Promise<boolean>};
@@ -14,6 +15,7 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete}
   const [busy,setBusy]=useState<Record<string,boolean>>({});
   const [errors,setErrors]=useState<Record<string,string>>({});
   const [saving,setSaving]=useState(false);
+  const [manual,setManual]=useState<Record<string,boolean>>({});
   const [counterId,setCounterId]=useState<string|null>(null);
   useEffect(()=>{try{localStorage.setItem(draftKey,JSON.stringify(stacks));}catch{}},[draftKey,stacks]);
   const setError=(id:string,msg:string)=>setErrors(p=>({...p,[id]:msg}));
@@ -21,7 +23,7 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete}
   const upload=async(id:string,file?:File)=>{
     if(!file||busy[id])return;
     setBusy(p=>({...p,[id]:true}));setError(id,'');clearReview(id);
-    try{setPhotos(p=>({...p,[id]:undefined as unknown as string}));const photo=await prepareChipPhoto(file);setPhotos(p=>({...p,[id]:photo}));}
+    try{setPhotos(p=>{const n={...p};delete n[id];return n;});const photo=await prepareChipPhoto(file);setPhotos(p=>({...p,[id]:photo}));}
     catch(e){setError(id,e instanceof Error?e.message:'Photo failed.');}
     finally{setBusy(p=>({...p,[id]:false}));}
   };
@@ -59,6 +61,8 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete}
             {photos[id]&&<button aria-label="Remove photo" disabled={busy[id]} className="p-2 text-error" onClick={()=>{setPhotos(prev=>{const n={...prev};delete n[id];return n;});clearReview(id);}}><X size={20}/></button>}
           </div>
         </div>
+        <button className="text-sm text-primary font-semibold underline" disabled={busy[id]||saving} onClick={()=>setManual(prev=>({...prev,[id]:!prev[id]}))}>{manual[id]?'Hide manual counter':'Count chips by color manually'}</button>
+        {manual[id]&&<ChipCounter rate={exchangeRate} onApply={units=>{clearReview(id);setStacks(prev=>({...prev,[id]:String(units)}));setManual(prev=>({...prev,[id]:false}));}}/>}
         {busy[id]&&<p role="status" className="text-xs text-primary">Processing photo…</p>}
         {errors[id]&&<p role="alert" className="text-sm text-error">{errors[id]}</p>}
         {review&&<div className="rounded-xl bg-surface-container-low p-4 space-y-3"><h4 className="font-bold">Review AI chip counts</h4><p className="text-xs text-on-surface-variant">Correct the estimated number of chips by color. AI may miss hidden chips.</p>
