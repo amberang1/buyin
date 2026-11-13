@@ -1,67 +1,24 @@
 import React, { useState } from 'react';
-import { Play, Users } from 'lucide-react';
-
-type Props = {
-  busy: boolean;
-  onCreateGame: () => void;
-  onJoinGame: (gameId: string) => void;
-};
-
-export default function HomePhase({ busy, onCreateGame, onJoinGame }: Props) {
-  const [joinCode, setJoinCode] = useState(() => { const code = new URLSearchParams(window.location.search).get('room') || ''; return /^\d{6}$/.test(code) ? code : ''; });
-
-  const handleJoin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (/^\d{6}$/.test(joinCode) && !busy) {
-      onJoinGame(joinCode);
-    }
-  };
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-12">
-      <div className="text-center space-y-4">
-        <h1 className="text-5xl md:text-6xl font-black text-on-surface font-serif tracking-tight italic">check</h1>
-        <p className="text-on-surface-variant text-lg">Real-time poker ledger</p>
-      </div>
-
-      <div className="w-full max-w-sm space-y-6">
-        <button 
-          onClick={onCreateGame} disabled={busy}
-          className="w-full py-4 bg-primary text-on-primary font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all text-lg flex items-center justify-center gap-3"
-        >
-          <Play className="w-5 h-5 fill-current" />
-          <span>Create New Game</span>
-        </button>
-
-        <div className="relative flex items-center py-4">
-          <div className="flex-grow border-t border-outline-variant/30"></div>
-          <span className="flex-shrink-0 mx-4 text-outline text-sm font-bold uppercase tracking-wider">or join existing</span>
-          <div className="flex-grow border-t border-outline-variant/30"></div>
-        </div>
-
-        <form onSubmit={handleJoin} className="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/10 space-y-4">
-          <div>
-            <label className="text-xs uppercase font-bold tracking-wider text-outline block mb-2 text-center">Enter 6-digit room code</label>
-            <input 
-              type="text" 
-              autoComplete="off" inputMode="numeric" spellCheck={false}
-              maxLength={6}
-              value={joinCode}
-              onChange={e => setJoinCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
-              className="w-full bg-surface-container-low border border-outline-variant/30 focus:border-primary rounded-xl p-4 text-center text-3xl font-mono tracking-widest outline-none text-on-surface transition-colors"
-            />
-          </div>
-          <button 
-            type="submit"
-            disabled={busy || !/^\d{6}$/.test(joinCode)}
-            className="w-full py-3.5 bg-secondary text-on-secondary font-bold rounded-xl hover:bg-secondary-dim disabled:opacity-50 transition-all flex items-center justify-center gap-2 active:scale-95"
-          >
-            <Users className="w-5 h-5" />
-            <span>Join Game</span>
-          </button>
-        </form>
-      </div>
+import { ArrowUpRight, Users, Spade, Plus } from 'lucide-react';
+type Props = { busy:boolean; onCreateGame:()=>void; onJoinGame:(gameId:string)=>void };
+export default function HomePhase({busy,onCreateGame,onJoinGame}:Props) {
+  const [joinCode,setJoinCode]=useState(()=>{ const c=new URLSearchParams(window.location.search).get('room')||'';return /^\d{6}$/.test(c)?c:''; });
+  return <div className="mx-auto max-w-3xl space-y-5">
+    <section className="club-hero p-7 sm:p-10 min-h-64 flex flex-col justify-between">
+      <div className="flex justify-between items-start"><span className="club-kicker text-[#d7c69f]">The table is yours</span><Spade className="w-10 h-10 text-[#d7c69f]" strokeWidth={1.2}/></div>
+      <div className="mt-8"><h1 className="font-serif text-5xl sm:text-6xl leading-[1.05] tracking-tight">Good hands.<br/>Clean books.</h1><p className="mt-4 text-sm text-[#dae5d9] max-w-sm">Keep the chips moving and let Buy In keep score.</p></div>
+    </section>
+    <div className="grid sm:grid-cols-2 gap-4">
+      <section className="club-card p-6 flex flex-col gap-4">
+        <div className="flex items-center gap-3"><div className="rounded-full bg-primary/10 p-3 text-primary"><Plus size={22}/></div><div><h2 className="font-headline font-bold text-lg">Host a game</h2><p className="text-xs text-on-surface-variant">Set stakes, add players, share a code.</p></div></div>
+        <button disabled={busy} onClick={onCreateGame} className="club-button mt-auto flex justify-between items-center">{busy?'Connecting…':'Create new game'}<ArrowUpRight size={18}/></button>
+      </section>
+      <form className="club-card p-6 space-y-4" onSubmit={e=>{e.preventDefault();if(!busy&&/^\d{6}$/.test(joinCode))onJoinGame(joinCode);}}>
+        <div className="flex items-center gap-3"><div className="rounded-full bg-secondary/10 p-3 text-secondary"><Users size={22}/></div><div><h2 className="font-headline font-bold text-lg">Join a table</h2><p className="text-xs text-on-surface-variant">Enter your host’s room code.</p></div></div>
+        <label className="sr-only" htmlFor="room-code">Six-digit room code</label><input id="room-code" className="club-input text-center font-mono tracking-[.35em] text-2xl" inputMode="numeric" autoComplete="off" maxLength={6} placeholder="000000" value={joinCode} onChange={e=>setJoinCode(e.target.value.replace(/\D/g,'').slice(0,6))}/>
+        <button className="club-secondary w-full" disabled={busy||!/^\d{6}$/.test(joinCode)}>Join game</button>
+      </form>
     </div>
-  );
+    <p className="text-center text-xs text-on-surface-variant">No account needed · Live room updates · Settle in minutes</p>
+  </div>;
 }
