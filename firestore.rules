@@ -1,67 +1,61 @@
 rules_version = '2';
-
 service cloud.firestore {
-  match /databases/{database}/documents {
-    // Helper Functions
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
-    }
-
-    function isValidExchangeRate(rate) {
-      return rate is map &&
-             rate.keys().hasAll(['baseCurrency', 'chips']) &&
-             rate.baseCurrency is number && rate.baseCurrency > 0 &&
-             rate.chips is number && rate.chips > 0;
-    }
-
-    function isValidGame(data) {
-      return hasRequiredFields(['status', 'exchangeRate', 'createdAt', 'hostId']) &&
-             hasOnlyAllowedFields(['status', 'exchangeRate', 'createdAt', 'hostId']) &&
-             data.status in ['setup', 'active', 'settlement', 'results'] &&
-             isValidExchangeRate(data.exchangeRate) &&
-             data.createdAt is string &&
-             data.hostId is string && data.hostId.size() > 0 && data.hostId.size() < 100;
-    }
-
-    function isValidPlayer(data) {
-      return hasRequiredFields(['name', 'buyIns', 'cashOuts', 'finalStackValue']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
-             data.buyIns is list && data.buyIns.size() <= 100 &&
-             data.cashOuts is list && data.cashOuts.size() <= 100 &&
-             data.finalStackValue is number && data.finalStackValue >= 0 &&
-             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() < 1048576)) && // 1MB limit for base64 photo
-             (!('userId' in data) || (data.userId is string && data.userId.size() < 100));
-    }
-
-    match /games/{gameId} {
-      // Anyone can read games (to join them)
-      allow read: if true;
-      
-      // Anyone can create a game
-      allow create: if isValidGame(request.resource.data);
-      
-      // Anyone can update a game (e.g. changing status)
-      // We ensure hostId doesn't change.
-      allow update: if isValidGame(request.resource.data) &&
-                    request.resource.data.hostId == resource.data.hostId;
-      
-      match /players/{playerId} {
-        // Anyone can read players in a game
-        allow read: if true;
-        
-        // Anyone can add a player
-        allow create: if isValidPlayer(request.resource.data);
-        
-        // Anyone can update a player (e.g. adding buy-ins)
-        allow update: if isValidPlayer(request.resource.data);
-        
-        // Anyone can delete a player
-        allow delete: if true;
-      }
-    }
+ match /databases/{database}/documents {
+  function signedIn() { return request.auth != null; }
+  function validRoom(id) { return id.matches('^[a-f0-9]{32}$'); }
+  function gamePath(id) { return /databases/$(database)/documents/games/$(id); }
+  function host(id) { return signedIn() && validRoom(id) && get(gamePath(id)).data.hostId == request.auth.uid; }
+  function member(id) { return signedIn() && validRoom(id) && exists(/databases/$(database)/documents/games/$(id)/members/$(request.auth.uid)); }
+  function canRead(id) { return host(id) || member(id); }
+  function validGame(d) {
+   return d.keys().hasAll(['status','exchangeRate','createdAt','hostId']) &&
+    d.keys().hasOnly(['status','exchangeRate','createdAt','hostId']) &&
+    d.status in ['setup','active','settlement','results'] && d.createdAt is string && d.hostId is string &&
+    d.exchangeRate is map && d.exchangeRate.keys().hasOnly(['baseCurrency','chips','chipValues']) &&
+    d.exchangeRate.baseCurrency is number && d.exchangeRate.baseCurrency > 0 && d.exchangeRate.baseCurrency <= 1000000 &&
+    d.exchangeRate.chips is number && d.exchangeRate.chips > 0 && d.exchangeRate.chips <= 100000000 &&
+    d.exchangeRate.chipValues is map && d.exchangeRate.chipValues.size() <= 30;
   }
+  function validPlayer(d,id) {
+   return d.keys().hasAll(['id','name','buyIns','cashOuts','finalStackValue']) &&
+    d.keys().hasOnly(['id','name','buyIns','cashOuts','finalStackValue','photoUrl']) &&
+    d.id == id && d.name is string && d.name.size() > 0 && d.name.size() < 50 &&
+    d.buyIns is list && d.buyIns.size() <= 100 && d.cashOuts is list && d.cashOuts.size() <= 100 &&
+    d.finalStackValue is number && d.finalStackValue >= 0 && d.finalStackValue <= 100000000 &&
+    (!('photoUrl' in d) || (d.photoUrl is string && d.photoUrl.size() < 900000));
+  }
+  match /games/{gameId} {
+   allow get: if canRead(gameId);
+   allow list, delete: if false;
+   allow create: if signedIn() && validRoom(gameId) && validGame(request.resource.data) &&
+     request.resource.data.hostId == request.auth.uid && request.resource.data.status == 'setup';
+   allow update: if host(gameId) && validGame(request.resource.data) &&
+     request.resource.data.hostId == resource.data.hostId && request.resource.data.createdAt == resource.data.createdAt &&
+     ((resource.data.status == 'setup' && request.resource.data.status == 'setup') ||
+      (request.resource.data.exchangeRate == resource.data.exchangeRate &&
+       ((resource.data.status == 'setup' && request.resource.data.status == 'active') ||
+        (resource.data.status == 'active' && request.resource.data.status == 'settlement') ||
+        (resource.data.status == 'settlement' && request.resource.data.status == 'results'))));
+   match /members/{uid} {
+    allow get: if signedIn() && validRoom(gameId) && (uid == request.auth.uid || host(gameId));
+    allow list: if host(gameId);
+    allow create: if signedIn() && validRoom(gameId) && uid == request.auth.uid &&
+      request.resource.data.keys().hasOnly(['uid']) && request.resource.data.uid == uid &&
+      exists(gamePath(gameId)) && get(gamePath(gameId)).data.status != 'results';
+    allow update: if false;
+    allow delete: if host(gameId);
+   }
+   match /players/{playerId} {
+    allow read: if canRead(gameId);
+    allow create: if host(gameId) && get(gamePath(gameId)).data.status == 'setup' && validPlayer(request.resource.data,playerId);
+    allow update: if host(gameId) && validPlayer(request.resource.data,playerId) &&
+      ((get(gamePath(gameId)).data.status == 'setup' && getAfter(gamePath(gameId)).data.status == 'setup') ||
+       (get(gamePath(gameId)).data.status == 'active' && getAfter(gamePath(gameId)).data.status == 'active' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['buyIns','cashOuts'])) ||
+       (get(gamePath(gameId)).data.status == 'settlement' && getAfter(gamePath(gameId)).data.status == 'results' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['finalStackValue','photoUrl'])));
+    allow delete: if host(gameId) && get(gamePath(gameId)).data.status == 'setup';
+   }
+  }
+ }
 }
