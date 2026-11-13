@@ -4,9 +4,11 @@ React/Vite frontend, Firebase Authentication and Firestore, and an Express serve
 
 ## Setup and deployment
 
+Dedicated Firebase project: `buy-in-d6405`. Create its `(default)` Firestore database in production mode and enable Anonymous Authentication. The old Drift project is not used or modified by this branch. The Firebase CLI project alias is set to Buy In. Existing Drift rooms are not migrated.
+
 1. Run `npm ci`.
 2. Enable **Anonymous** sign-in in Firebase Authentication for the project in `firebase-applet-config.json`.
-3. Deploy `firestore.rules` to the **named Firestore database** in that configuration, not just the default database.
+3. Deploy `firestore.rules` to the **(default) Firestore database** in Buy In: `firebase deploy --only firestore:rules --project buy-in-d6405`.
 4. Rotate or revoke any Gemini key previously shipped in the browser. Set a new `GEMINI_API_KEY` in server secrets (or local .env).
 5. Run `npm run dev` (Express with Vite middleware; port 3000 by default).
 6. Give the Node server Application Default Credentials with Firestore read/write permissions (e.g. a Cloud Run runtime service account with Cloud Datastore User in this Firebase project). For local development use ADC via gcloud or a local credential file outside the repo. Never put a service account key in the client or GitHub.
