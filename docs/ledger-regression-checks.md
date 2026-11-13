@@ -26,3 +26,11 @@ Run `npm ci`, `npm run lint`, and `npm run build` before deploying. Use a test F
 
 ## Not addressed here
 See the security checks for authentication, room membership and Gemini proxy deployment. Photo storage, complete monetary representation migration and offline behavior need separate work. Client validation alone is not a security boundary. Do not deploy to real users until access controls and secrets are verified.
+
+## Photo scanner and final reconciliation
+- In setup open Configure chip denominations, enter known values, and save. Use the color scanner only to suggest colors; the host supplies denominations.
+- Photograph one player's chips separated by color. Test JPEG, PNG, a large phone photo, a blurry photo, and a photo of non-chip objects. Image compression should work and failures must preserve manual input.
+- Verify AI returns editable physical counts by color and a warning for obscured chips; confirm an estimate only after correcting it. Unknown colors, duplicate rows and fractional counts are rejected. Compare with a known physical stack.
+- Test the manual color counter and numeric chip-value entry. At $20 per 100 units, 10 red (5 each), 4 green (25 each), 1 black (100 each) total 250 units = $50.
+- Enter zero explicitly for an empty stack. Confirm the ledger refuses finalization when the totals differ by even one cent; correct inputs, then finalize. This assumes no rake or external money movement.
+- Run `npm test`, `npm run lint`, and `npm run build`. A passing arithmetic test is not a live camera, Gemini, or Firebase test.
