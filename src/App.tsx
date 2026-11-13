@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Phase, Player, ExchangeRate } from './types';
+import { Phase, Player, ExchangeRate, PlayerRequest, Payment } from './types';
+import ParticipationPanel from './components/ParticipationPanel';
 import HomePhase from './components/HomePhase';
 import SetupPhase from './components/SetupPhase';
 import ActivePhase from './components/ActivePhase';
@@ -10,7 +11,7 @@ import { Spade, Settings, Layers, LogOut } from 'lucide-react';
 import { validateSettings } from './ledger.mjs';
 import { db, ensureAnonymousUser, projectId } from './firebase';
 import { roomRequest, ledgerRequest } from './rooms';
-import { doc, collection, onSnapshot } from 'firebase/firestore';
+import { doc, collection, onSnapshot, query, where } from 'firebase/firestore';
 
 function samePlayer(a?: Player, b?: Player) {
   if (!a || !b) return a === b;
@@ -57,6 +58,10 @@ export default function App() {
     }
   });
   const [players, setPlayers] = useState<Player[]>([]);
+  const [requests,setRequests]=useState<PlayerRequest[]>([]);
+  const [payments,setPayments]=useState<Payment[]>([]);
+  const [participationReady,setParticipationReady]=useState(false);
+  const [participationError,setParticipationError]=useState('');
   const [history, setHistory] = useState<any[]>(() => {
     const saved = localStorage.getItem('poker_history_' + projectId);
     try { const value=saved?JSON.parse(saved):[]; return Array.isArray(value)?value:[]; } catch { return []; }
@@ -95,12 +100,28 @@ export default function App() {
     return () => { unsubscribeGame(); unsubscribePlayers(); };
   }, [gameId, userId, retry]);
 
+  useEffect(()=>{
+    if(!gameId||!userId||!hostId)return;
+    setRequests([]);setPayments([]);setParticipationReady(false);setParticipationError('');
+    let requestsReady=false,paymentsReady=false,failed=false;
+    const error=()=>{failed=true;setParticipationReady(false);setParticipationError('Could not load requests and payments. Retry the connection before making changes.');};
+    const requestSource=isHost?collection(db,'games',gameId,'requests'):query(collection(db,'games',gameId,'requests'),where('uid','==',userId));
+    const stopRequests=onSnapshot(requestSource,{includeMetadataChanges:true},snapshot=>{if(snapshot.metadata.fromCache)return;setRequests(snapshot.docs.map(d=>d.data() as PlayerRequest));requestsReady=true;setParticipationReady(!failed&&requestsReady&&paymentsReady);},error);
+    const stopPayments=onSnapshot(collection(db,'games',gameId,'payments'),{includeMetadataChanges:true},snapshot=>{if(snapshot.metadata.fromCache)return;setPayments(snapshot.docs.map(d=>d.data() as Payment));paymentsReady=true;setParticipationReady(!failed&&requestsReady&&paymentsReady);},error);
+    return()=>{stopRequests();stopPayments();};
+  },[gameId,userId,hostId,isHost,retry]);
+  const participantAction=async(action:string,data:unknown)=>{
+    if(!gameId||!participationReady)return false;
+    try{await ledgerRequest(gameId,action,data);return true;}
+    catch(error){alert(error instanceof Error?error.message:'Could not save.');return false;}
+  };
   const openRoom = (id: string) => {
     localStorage.setItem('poker_current_game_id_' + projectId, id);
     const url = new URL(window.location.href);
     url.searchParams.delete('room');
     window.history.replaceState(null, '', url);
     setHostId(null); setPlayers([]); setRoomCode(''); setRestoreError('');
+    setRequests([]);setPayments([]);setParticipationReady(false);setParticipationError('');
     setReadyRoom(null); setReadyPlayers(null); setGameId(id);
   };
 
@@ -161,12 +182,13 @@ export default function App() {
   const handleSettleGame=()=>advancePhase('active','settlement');
   const handleShowResults=(stacks:Record<string,string>,photos:Record<string,string>)=>saveAction('finalize',{stacks,photos,expected:players,rate:exchangeRate});
   const handleArchiveSession = () => {
+    if(!participationReady){alert('Wait for payment records to load before archiving.');return;}
     if (players.length > 0) {
       const newHistoryItem = {
         id: Date.now().toString(),
         date: new Date().toISOString(),
         players: players.map(({photoUrl,...player})=>player),
-        roomId: gameId, roomCode,
+        roomId: gameId, roomCode, payments,
         exchangeRate: { ...exchangeRate }
       };
       const updatedHistory = [newHistoryItem, ...history].slice(0, 20).map(item=>({...item,players:item.players.map(({photoUrl,...p}:Player)=>p)}));
@@ -180,7 +202,7 @@ export default function App() {
     setGameId(null); setHostId(null); setRoomCode(''); setRestoreError('');
     setReadyRoom(null); setReadyPlayers(null); setGamePhase('home');
     localStorage.removeItem('poker_current_game_id_' + projectId);
-    setPlayers([]); setPhase('home');
+    setPlayers([]); setRequests([]);setPayments([]);setParticipationReady(false);setParticipationError(''); setPhase('home');
   };
 
   if (!userId) return <main className="p-8 text-center">{authError ? "Could not connect securely. Reload and try again." : "Connecting securely..."}</main>;
@@ -218,7 +240,9 @@ export default function App() {
       </header>
 
       <main className="pt-24 px-4 md:px-6 max-w-5xl mx-auto space-y-8 md:space-y-12">
-        {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Guest view: only the host can edit this ledger.</p>}
+        {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Your requests appear below. The host confirms financial entries.</p>}
+        {gameId&&participationError&&<div role="alert" className="club-card p-4 text-error">{participationError}<button className="club-secondary ml-2" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
+        {gameId&&userId&&phase!=='home'&&phase!=='settings'&&<ParticipationPanel uid={userId} host={isHost} phase={gamePhase} players={players} requests={requests} rate={exchangeRate} ready={participationReady} onAction={participantAction}/>}
         {phase === 'home' && (
           <><HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>
         )}
@@ -260,6 +284,9 @@ export default function App() {
           <ResultsPhase 
             players={players}
             onArchive={handleArchiveSession}
+            payments={payments}
+            canRecordPayments={isHost&&participationReady}
+            onPayment={(playerId,amount,expectedCents)=>participantAction('payment',{playerId,amount,expectedCents})}
           />
         )}
         {phase === 'settings' && (
@@ -306,4 +333,3 @@ export default function App() {
     </div>
   );
 }
-

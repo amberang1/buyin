@@ -1,9 +1,10 @@
 import React from 'react';
 import { CheckCircle2, Share2, AlertTriangle, Spade } from 'lucide-react';
-import { Player } from '../types';
+import PaymentTracker from './PaymentTracker';
+import { Player, Payment } from '../types';
 import { balance, reconciliation, money } from '../ledger.mjs';
-type Props = { players:Player[]; onArchive:()=>void; archiveLabel?:string };
-export default function ResultsPhase({players,onArchive,archiveLabel="Archive & return home"}:Props){
+type Props = { players:Player[]; onArchive:()=>void; archiveLabel?:string;payments?:Payment[];canRecordPayments?:boolean;onPayment?:(id:string,amount:number,expectedCents:number)=>Promise<boolean> };
+export default function ResultsPhase({players,onArchive,archiveLabel="Archive & return home",payments,canRecordPayments=false,onPayment}:Props){
   const rows=players.map(p=>({...p,...balance(p)}));
   const {totalIn,totalOut,difference}=reconciliation(players);
   const balanced=difference===0;
@@ -28,7 +29,7 @@ export default function ResultsPhase({players,onArchive,archiveLabel="Archive & 
     </div>)}</div>
     <p className="text-xs text-on-surface-variant">These are accounting results, not payment instructions. If buy-ins were paid upfront, each player’s final stack is the remaining amount to return.</p>
     </section>
+    {payments&&<section className="club-card p-5 space-y-4"><div><h3 className="text-xl font-bold">Payouts</h3><p className="text-sm text-on-surface-variant">Track money actually returned from the table. Final payouts exclude earlier cash-outs and are separate from profit or loss. Marking a payment records it; the app does not transfer money.</p></div>{players.map(p=><PaymentTracker key={p.id} player={p} payment={payments.find(item=>item.playerId===p.id)} canEdit={canRecordPayments} onPayment={onPayment}/>)}</section>}
     <div className="grid sm:grid-cols-2 gap-3"><button className="club-secondary flex items-center justify-center gap-2" onClick={share}><Share2 size={17}/> Share results</button><button className="club-button" onClick={onArchive}>{archiveLabel}</button></div>
   </div>;
 }
-

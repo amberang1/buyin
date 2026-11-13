@@ -23,6 +23,14 @@ service cloud.firestore {
     allow read: if canRead(gameId);
     allow create, update, delete: if false;
    }
+   match /requests/{requestId} {
+    allow read: if host(gameId) || (member(gameId) && resource.data.uid == request.auth.uid);
+    allow write: if false;
+   }
+   match /payments/{playerId} {
+    allow read: if canRead(gameId);
+    allow write: if false;
+   }
    match /operations/{operationId} { allow read, write: if false; }
   }
  }

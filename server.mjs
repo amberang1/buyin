@@ -1,3 +1,4 @@
+import { mutateParticipation, participationActions, assertNoPending } from './src/participation.mjs';
 import { validateSettings } from './src/ledger.mjs';
 import { mutateRoom } from './src/mutations.mjs';
 import 'dotenv/config';
@@ -180,17 +181,28 @@ app.post('/api/ledger', express.json({limit:'6mb'}), async(req,res)=>{
         };
         const gameDoc=await read('games/'+gameId);
         const game=gameDoc?decode({mapValue:{fields:gameDoc.fields}}):null;
-        if(!game||game.hostId!==uid){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.status(403).json({error:'Only the host can edit this room.'});}
-        const receipt='games/'+gameId+'/operations/'+requestId;
-        if(await read(receipt)){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.json({ok:true});}
+        if(!game||(game.hostId!==uid&&(!participationActions.includes(action)||!await read('games/'+gameId+'/members/'+uid)))){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.status(403).json({error:'Room access denied.'});}
+        const receipt='games/'+gameId+'/operations/'+uid+'-'+requestId;
+        if(await read(receipt)||(game.hostId===uid&&await read('games/'+gameId+'/operations/'+requestId))){await firestoreRequest(documents+':rollback','POST',{transaction});transaction=null;return res.json({ok:true});}
         const query=await firestoreRequest(documents+'/games/'+gameId+':runQuery','POST',{transaction,structuredQuery:{from:[{collectionId:'players'}]}});
         const original=query.filter(r=>r.document).map(r=>decode({mapValue:{fields:r.document.fields}})).sort((a,b)=>a.id.localeCompare(b.id));
-        const next=mutateRoom(game,original,action,data);
+        const readCollection=async collectionId=>{
+          const rows=await firestoreRequest(documents+'/games/'+gameId+':runQuery','POST',{transaction,structuredQuery:{from:[{collectionId}]}});
+          return rows.filter(r=>r.document).map(r=>decode({mapValue:{fields:r.document.fields}}));
+        };
+        const requests=await readCollection('requests');
+        const payments=action==='payment'?await readCollection('payments'):[];
+        let next;
+        if(participationActions.includes(action))next=mutateParticipation(game,original,requests,payments,uid,action,data,requestId,new Date().toISOString());
+        else {assertNoPending(requests,action,data);next=mutateRoom(game,original,action,data);}
+
         const writes=[writeDocument('games/'+gameId,encode(next.game).mapValue.fields)];
         for(const player of next.players){
           if(JSON.stringify(player)!==JSON.stringify(original.find(p=>p.id===player.id)))writes.push(writeDocument('games/'+gameId+'/players/'+player.id,encode(player).mapValue.fields));
         }
         for(const player of original)if(!next.players.some(p=>p.id===player.id))writes.push({delete:fullName('games/'+gameId+'/players/'+player.id)});
+        for(const item of next.requests||[])if(JSON.stringify(item)!==JSON.stringify(requests.find(r=>r.id===item.id)))writes.push(writeDocument('games/'+gameId+'/requests/'+item.id,encode(item).mapValue.fields));
+        for(const item of next.payments||[])if(JSON.stringify(item)!==JSON.stringify(payments.find(p=>p.playerId===item.playerId)))writes.push(writeDocument('games/'+gameId+'/payments/'+item.playerId,encode(item).mapValue.fields));
         writes.push(writeDocument(receipt,{action:sv(action),createdAt:sv(new Date().toISOString())},true));
         await firestoreRequest(documents+':commit','POST',{transaction,writes});transaction=null;
         return res.json({ok:true});
@@ -282,4 +294,3 @@ if (process.argv.includes('--dev')) {
   app.get('*', (_req,res) => res.sendFile(path.join(dist,'index.html')));
 }
 app.listen(Number(process.env.PORT || 3000), '0.0.0.0');
-

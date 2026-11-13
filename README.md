@@ -16,7 +16,7 @@ Dedicated Firebase project: `buy-in-d6405`. Create its `(default)` Firestore dat
 
 ## Access model
 
-Anonymous Firebase authentication provides a browser-specific identity. Hosts create a six-digit room code or share an invitation link. A protected backend allocates short codes and maps them to internal random 32-character IDs; guests redeem codes for read-only membership. The browser saves the Firebase identity and current room ID locally and reloads the same room and ledger after refresh. Only the host can edit financial records, advance phases, or scan with Gemini. Table settings lock after setup.
+Anonymous Firebase authentication provides a browser-specific identity. Hosts create a six-digit room code or share an invitation link. A protected backend allocates short codes and maps them to internal random 32-character IDs; guests redeem codes for room membership and can link their own seat and submit financial requests. The browser saves the Firebase identity and current room ID locally and reloads the same room and ledger after refresh. Only the host can edit financial records, advance phases, or scan with Gemini. Table settings lock after setup.
 
 Old four-digit rooms, old local host IDs, and rooms created under the intermediate 32-character invitation scheme are not migrated. Export/backup old sessions before deployment. If a host clears storage or changes devices, the anonymous identity may be lost. Never share codes publicly.
 
@@ -32,3 +32,14 @@ Rooms support up to 30 players. Chip colors are unique ignoring case, limited to
 Settlement photos, counts and unconfirmed AI reviews are stored in IndexedDB on the current device. Storage failures are shown explicitly. Archives omit photos, handle storage failure, and can be opened from History on the home screen. They remain device-local, not a cloud backup.
 
 Validation: `npm ci`, `npm run lint`, `npm test`, `npm run build`, and `node --check server.mjs`. The tests cover invalid amounts, stale edits, phase transitions, overdraws, equal rebuys, undo, finalization, and fractional rounding. Live Firebase/ADC, rules deployment and Gemini integration require deployment-environment verification.
+
+
+## Player participation and payouts
+
+A room member can create one seat in setup or during active play, with an optional initial buy-in request. Seat ownership is tied to the persisted Firebase anonymous UID, so refreshing on the same browser restores the seat. An existing host-created seat can be linked only after host approval. Changing browsers or clearing authentication storage does not restore that identity automatically.
+
+Guests submit buy-in and cash-out requests only for their own seat. Requests retain requested, confirmed or rejected status and optional rejection reasons. The host confirms money received for buy-ins, and chips received plus money paid for mid-game cash-outs. Confirmation appends financial entries and resolves the request in one transaction; retries cannot append it twice. Pending requests block starting, settlement and finalization, and must be resolved before the host manually edits that player's entries. Late arrivals can enroll while play is active, but not during settlement or after finalization.
+
+Final results show profit/loss separately from final payouts. Host-recorded payment totals support unpaid, partly paid, fully paid and zero-payout states. They exclude earlier cash-outs, do not change financial results, and do not transfer money. Payment updates reject stale totals and overpayments. Archived history saves a snapshot of payment records.
+
+Deploy the updated frontend, backend and Firestore rules together. Request reads are limited to the host and the requesting guest; room members can read payment statuses. Every write is validated on the backend, including membership and seat ownership checks. Added tests cover permission failures, concurrent claims, duplicate confirmation, late entry, stale cash-out previews and partial payments; UI rendering tests cover restored identities, request visibility and payout labels.

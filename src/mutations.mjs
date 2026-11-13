@@ -8,10 +8,11 @@ export function validatePlayer(p) {
     if (!Array.isArray(p[key]) || p[key].length > 100) fail('Invalid transaction list.');
     for (const value of p[key]) if (moneyCents(value) <= 0 || Math.abs(value * 100 - moneyCents(value)) > 0.00001) fail('Use positive whole-cent amounts.');
   }
+  if(p.ownerUid!==undefined&&(typeof p.ownerUid!=='string'||!p.ownerUid||p.ownerUid.length>128))fail('Invalid seat identity.');
   moneyCents(p.finalStackValue);
   if(p.cashOutChipUnits!==undefined&&(!Array.isArray(p.cashOutChipUnits)||p.cashOutChipUnits.length!==p.cashOuts.length||p.cashOutChipUnits.some(v=>!Number.isFinite(v)||v<=0||v>100000000)))fail('Invalid chip transaction record.');
   if (p.photoUrl !== undefined && (typeof p.photoUrl !== 'string' || p.photoUrl.length > 180000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(p.photoUrl))) fail('Invalid or oversized photo.');
-  if (Object.keys(p).some(k=>!['id','name','buyIns','cashOuts','cashOutChipUnits','finalStackValue','photoUrl'].includes(k))) fail('Unknown player field.');
+  if (Object.keys(p).some(k=>!['id','name','buyIns','cashOuts','cashOutChipUnits','finalStackValue','photoUrl','ownerUid'].includes(k))) fail('Unknown player field.');
 }
 export function mutateRoom(game, original, action, data) {
   const players = structuredClone(original);
@@ -27,7 +28,7 @@ export function mutateRoom(game, original, action, data) {
     for(const change of data.changes){
       const index=players.findIndex(p=>p.id===change.id), current=index<0?null:players[index];
       if(!same(current,change.before)) fail('A player changed. Review the latest values and retry.');
-      if(change.after){validatePlayer(change.after);if(change.after.id!==change.id||change.after.cashOuts.length||change.after.finalStackValue!==0)fail('Invalid setup player.');if(index<0)players.push(change.after);else players[index]=change.after;}
+      if(change.after){if(change.after.ownerUid!==current?.ownerUid)fail('Seat links can only change through approved requests.');validatePlayer(change.after);if(change.after.id!==change.id||change.after.cashOuts.length||change.after.finalStackValue!==0)fail('Invalid setup player.');if(index<0)players.push(change.after);else players[index]=change.after;}
       else if(index>=0)players.splice(index,1);
     }
     if(players.length>30)fail('A room supports up to 30 players.');

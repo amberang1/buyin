@@ -75,7 +75,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
     }
   };
 
-  if(selectedGame)return <div className="space-y-4"><button className="club-secondary" onClick={()=>setSelectedGame(null)}>Back to history</button><ResultsPhase players={selectedGame.players} onArchive={()=>setSelectedGame(null)} archiveLabel="Back to history"/></div>;
+  if(selectedGame)return <div className="space-y-4"><button className="club-secondary" onClick={()=>setSelectedGame(null)}>Back to history</button><ResultsPhase players={selectedGame.players} payments={selectedGame.payments} onArchive={()=>setSelectedGame(null)} archiveLabel="Back to history"/></div>;
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -216,4 +216,3 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
     </div>
   );
 }
-
