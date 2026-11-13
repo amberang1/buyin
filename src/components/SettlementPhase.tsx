@@ -3,6 +3,7 @@ import { Camera, Sparkles, Loader2, X, CheckCircle2, AlertTriangle } from 'lucid
 import { Player, ExchangeRate } from '../types';
 import { scanChips, prepareChipPhoto } from '../scan';
 import { stackTotal, chipCents, money, reconciliation } from '../ledger.mjs';
+import ChipCounter from './ChipCounter';
 type Props={gameId:string;players:Player[];exchangeRate:ExchangeRate;onComplete:(players:Player[])=>Promise<boolean>};
 type Review={counts:Record<string,number>;warnings:string[]};
 export default function SettlementPhase({gameId,players,exchangeRate,onComplete}:Props){
@@ -13,6 +14,7 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete}
   const [busy,setBusy]=useState<Record<string,boolean>>({});
   const [errors,setErrors]=useState<Record<string,string>>({});
   const [saving,setSaving]=useState(false);
+  const [counterId,setCounterId]=useState<string|null>(null);
   useEffect(()=>{try{localStorage.setItem(draftKey,JSON.stringify(stacks));}catch{}},[draftKey,stacks]);
   const setError=(id:string,msg:string)=>setErrors(p=>({...p,[id]:msg}));
   const clearReview=(id:string)=>setReviews(p=>{const n={...p};delete n[id];return n;});
@@ -34,7 +36,7 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete}
     }catch(e){setError(id,e instanceof Error?e.message:'Scan failed. Enter chips manually.');}
     finally{setBusy(p=>({...p,[id]:false}));}
   };
-  const valid=(id:string)=>typeof stacks[id]==='string'&&stacks[id].trim()!==''&&Number.isFinite(Number(stacks[id]))&&Number(stacks[id])>=0&&Number(stacks[id])<=100000000&&Number.isSafeInteger(chipCents(stacks[id],exchangeRate));
+  const valid=(id:string)=>{try{return typeof stacks[id]==='string'&&stacks[id].trim()!==''&&Number.isFinite(Number(stacks[id]))&&Number(stacks[id])>=0&&Number(stacks[id])<=100000000&&Number.isSafeInteger(chipCents(stacks[id],exchangeRate));}catch{return false}};
   const complete=players.length>0&&players.every(p=>valid(p.id));
   const next=players.map(p=>({...p,finalStackValue:valid(p.id)?chipCents(stacks[p.id],exchangeRate)/100:0,...(photos[p.id]?{photoUrl:photos[p.id]}:{})}));
   const {totalIn,totalOut,difference}=reconciliation(next);
@@ -43,10 +45,12 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete}
   return <div className="space-y-5">
     <section><p className="club-kicker text-secondary">03 / Count &amp; reconcile</p><h2 className="font-serif text-4xl mt-2">Count the stacks.</h2><p className="text-sm text-on-surface-variant mt-2">Photograph one player’s chips, review the count, or enter the chip value manually. Lay out stacks by color in good light.</p></section>
     <section className="club-hero p-5 sm:p-7"><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-[#dae5d9]">Accounted for</p><p className="club-money text-3xl font-bold">${money(totalOut)}</p></div><div><p className="text-xs text-[#dae5d9]">Total buy-ins</p><p className="club-money text-3xl font-bold">${money(totalIn)}</p></div></div><div className="mt-4 text-xs flex items-center justify-between border-t border-white/20 pt-4"><span>{players.filter(p=>valid(p.id)).length} / {players.length} stacks entered</span><span>{difference===0?'Balanced':(difference>0?'Remaining $':'Over by $')+money(Math.abs(difference))}</span></div></section>
-    {players.map(p=>{const id=p.id;const review=reviews[id];let total=0;let good=true;if(review){try{total=stackTotal(review.counts,exchangeRate.chipValues);}catch{good=false;}}
+    {players.map(p=>{const id=p.id;const review=reviews[id];let total=0;let good=true;if(review){try{total=stackTotal(review.counts,exchangeRate.chipValues);chipCents(total,exchangeRate);}catch{good=false;}}
       return <section key={id} className="club-card p-5 space-y-4">
         <div className="flex justify-between items-center gap-3"><div><h3 className="font-headline font-bold text-lg">{p.name}</h3><p className="text-xs text-on-surface-variant">Buy-ins ${p.buyIns.reduce((a,b)=>a+b,0).toFixed(2)} · Earlier cash-outs ${p.cashOuts.reduce((a,b)=>a+b,0).toFixed(2)}</p></div>{valid(id)&&<CheckCircle2 className="text-primary shrink-0" size={22}/>}</div>
         <div><label className="text-xs font-bold" htmlFor={'stack-'+id}>Final chip value (not number of chips)</label><div className="flex gap-3 items-center mt-1"><input id={'stack-'+id} type="number" inputMode="decimal" min="0" max="100000000" step="any" className="club-input flex-1 min-w-0 font-bold text-xl" placeholder="Enter value, or 0" value={stacks[id]??''} onChange={e=>{clearReview(id);setStacks(prev=>({...prev,[id]:e.target.value}));}}/><span className="font-bold text-primary whitespace-nowrap">{valid(id)?'$'+money(chipCents(stacks[id],exchangeRate)):'—'}</span></div></div>
+        <button className="club-secondary w-full" onClick={()=>setCounterId(counterId===id?null:id)}>{counterId===id?'Hide manual calculator':'Count chips by color'}</button>
+        {counterId===id&&<ChipCounter key={id} rate={exchangeRate} onApply={units=>{clearReview(id);setStacks(prev=>({...prev,[id]:String(units)}));setCounterId(null)}}/>}
         <div className="flex gap-3 items-center">
           {photos[id]&&<img src={photos[id]} alt="Chip stack" className="w-20 h-20 rounded-xl object-cover"/>}
           <div className="flex-1 flex flex-wrap gap-2">
