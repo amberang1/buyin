@@ -1,208 +1,71 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React,{useState,useEffect} from 'react';
+import { Camera, Sparkles, Loader2, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Player, ExchangeRate } from '../types';
-import { Camera, Image as ImageIcon, X, Sparkles, Loader2 } from 'lucide-react';
-import { scanChips } from '../scan';
-
-type Props = {
-  gameId: string;
-  players: Player[];
-   exchangeRate: ExchangeRate;
-  onComplete: (players: Player[]) => Promise<boolean>;
-};
-
-export default function SettlementPhase({ gameId, players, exchangeRate, onComplete }: Props) {
-  const [saving, setSaving] = useState(false);
-  const draftKey = 'poker_stack_draft_' + gameId;
-  const [finalStacks, setFinalStacks] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem(draftKey) || '{}'); } catch { return {}; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem(draftKey, JSON.stringify(finalStacks)); } catch { /* storage unavailable */ }
-  }, [draftKey, finalStacks]);
-  const [playerPhotos, setPlayerPhotos] = useState<Record<string, string>>({});
-  const [scanning, setScanning] = useState<Record<string, boolean>>({});
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-
-  const handlePhotoUpload = (playerId: string, e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 650000 || !['image/jpeg','image/png','image/webp'].includes(file.type)) { alert('Choose a JPEG, PNG or WebP under 650 KB.'); return; }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPlayerPhotos(prev => ({ ...prev, [playerId]: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
-    }
+import { scanChips, prepareChipPhoto } from '../scan';
+import { stackTotal, chipCents, money, reconciliation } from '../ledger.mjs';
+type Props={gameId:string;players:Player[];exchangeRate:ExchangeRate;onComplete:(players:Player[])=>Promise<boolean>};
+type Review={counts:Record<string,number>;warnings:string[]};
+export default function SettlementPhase({gameId,players,exchangeRate,onComplete}:Props){
+  const draftKey='poker_stack_draft_'+gameId;
+  const [stacks,setStacks]=useState<Record<string,string>>(()=>{try{return JSON.parse(localStorage.getItem(draftKey)||'{}')||{};}catch{return {};}});
+  const [photos,setPhotos]=useState<Record<string,string>>({});
+  const [reviews,setReviews]=useState<Record<string,Review>>({});
+  const [busy,setBusy]=useState<Record<string,boolean>>({});
+  const [errors,setErrors]=useState<Record<string,string>>({});
+  const [saving,setSaving]=useState(false);
+  useEffect(()=>{try{localStorage.setItem(draftKey,JSON.stringify(stacks));}catch{}},[draftKey,stacks]);
+  const setError=(id:string,msg:string)=>setErrors(p=>({...p,[id]:msg}));
+  const clearReview=(id:string)=>setReviews(p=>{const n={...p};delete n[id];return n;});
+  const upload=async(id:string,file?:File)=>{
+    if(!file||busy[id])return;
+    setBusy(p=>({...p,[id]:true}));setError(id,'');clearReview(id);
+    try{setPhotos(p=>({...p,[id]:undefined as unknown as string}));const photo=await prepareChipPhoto(file);setPhotos(p=>({...p,[id]:photo}));}
+    catch(e){setError(id,e instanceof Error?e.message:'Photo failed.');}
+    finally{setBusy(p=>({...p,[id]:false}));}
   };
-
-  const handleAIScan = async (playerId: string) => {
-    const photoData = playerPhotos[playerId];
-    if (!photoData) return;
-
-    setScanning(prev => ({ ...prev, [playerId]: true }));
-
-    try {
-      const result = await scanChips(gameId, 'stack', photoData);
-      if (!/^\d+(\.\d+)?$/.test(result) || !Number.isFinite(Number(result))) throw new Error('Invalid scan result.');
-      const estimatedChips = Number(result);
-      
-      setFinalStacks(prev => ({ ...prev, [playerId]: estimatedChips.toString() }));
-    } catch (error) {
-      console.error("AI Scan failed:", error);
-      alert('Unable to read the chip stack reliably. Enter the value manually.');
-    } finally {
-      setScanning(prev => ({ ...prev, [playerId]: false }));
-    }
+  const runScan=async(id:string)=>{
+    if(!photos[id]||busy[id])return;
+    setBusy(p=>({...p,[id]:true}));setError(id,'');clearReview(id);
+    try{
+      const raw=await scanChips(gameId,'stack',photos[id]);
+      const review=JSON.parse(raw) as Review;
+      stackTotal(review.counts,exchangeRate.chipValues);
+      setReviews(p=>({...p,[id]:review}));
+    }catch(e){setError(id,e instanceof Error?e.message:'Scan failed. Enter chips manually.');}
+    finally{setBusy(p=>({...p,[id]:false}));}
   };
-
-  const removePhoto = (playerId: string) => {
-    setPlayerPhotos(prev => {
-      const next = { ...prev };
-      delete next[playerId];
-      return next;
-    });
-  };
-
-  const validStacks = players.length > 0 && players.every(p => {
-    const raw = finalStacks[p.id];
-    const cents = Number(raw) * exchangeRate.baseCurrency / exchangeRate.chips * 100;
-    return typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0 && Number.isSafeInteger(Math.round(cents));
-  }) && exchangeRate.baseCurrency > 0 && exchangeRate.chips > 0;
-
-  const handleSave = async () => {
-    if (!validStacks || saving || Object.values(scanning).some(Boolean)) return;
-    const next = players.map(p => {
-      const inputVal = Number(finalStacks[p.id]);
-      const valueInCurrency = Math.round(inputVal * (exchangeRate.baseCurrency / exchangeRate.chips) * 100) / 100;
-      
-      const updatedPlayer = { 
-        ...p, 
-        finalStackValue: valueInCurrency,
-      };
-      
-      if (playerPhotos[p.id]) {
-        updatedPlayer.photoUrl = playerPhotos[p.id];
-      } else {
-        delete updatedPlayer.photoUrl;
-      }
-      
-      return updatedPlayer;
-    });
-    setSaving(true);
-    try {
-      if (await onComplete(next)) localStorage.removeItem(draftKey);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="space-y-6 md:space-y-8">
-      <section className="space-y-2">
-        <p className="text-[10px] md:text-[11px] uppercase tracking-widest text-primary font-bold">End of Session</p>
-        <h2 className="text-4xl md:text-5xl font-extrabold tracking-tighter text-on-surface font-headline">Cash Out</h2>
-        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Enter final chip counts or use AI to scan your stacks for verification.</p>
-      </section>
-
-      <div className="bg-surface-container-lowest p-4 md:p-6 rounded-xl shadow-[0_12px_32px_rgba(62,94,149,0.06)] border border-outline-variant/10">
-        <div className="space-y-4 md:space-y-6">
-          {players.map(player => {
-            const currentBuyIn = player.buyIns.reduce((a, b) => a + b, 0);
-            const currentCashOut = player.cashOuts.reduce((a, b) => a + b, 0);
-            const inputVal = parseFloat(finalStacks[player.id]) || 0;
-            const valueInCurrency = inputVal * (exchangeRate.baseCurrency / exchangeRate.chips);
-            const net = (currentCashOut + valueInCurrency) - currentBuyIn;
-
-            return (
-              <div key={player.id} className="p-4 bg-surface rounded-2xl border border-outline-variant/10 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="font-bold text-on-surface text-base md:text-lg truncate pr-4">{player.name}</div>
-                  <div className="w-[120px] md:w-[160px] text-right">
-                    <input 
-                      type="number" 
-                      inputMode="decimal"
-                      placeholder="Enter chips" 
-                      min="0"
-                      value={finalStacks[player.id] || ''}
-                      onChange={e => setFinalStacks({ ...finalStacks, [player.id]: e.target.value })}
-                      className="w-full border border-outline-variant/30 rounded-xl p-2 text-right font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none bg-surface-container-lowest text-on-surface text-base"
-                    />
-                    <div className="text-xs mt-1.5 font-medium text-on-surface-variant">
-                      = ${valueInCurrency.toFixed(2)}
-                    </div>
-                    <div className={`text-xs font-bold mt-0.5 ${net > 0 ? 'text-primary' : net < 0 ? 'text-error' : 'text-outline'}`}>
-                      {net > 0 ? 'Takes' : net < 0 ? 'Gives' : 'Even'}: ${Math.abs(net).toFixed(2)}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  {playerPhotos[player.id] ? (
-                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border border-outline-variant/20">
-                      <img src={playerPhotos[player.id]} alt="Stack" className="w-full h-full object-cover" />
-                      <button 
-                        onClick={() => removePhoto(player.id)}
-                        className="absolute top-1 right-1 p-1 bg-error text-on-error rounded-full shadow-lg"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button 
-                      onClick={() => fileInputRefs.current[player.id]?.click()}
-                      className="flex flex-col items-center justify-center w-20 h-20 rounded-lg border-2 border-dashed border-outline-variant/30 hover:border-primary/50 hover:bg-primary/5 transition-all text-outline group"
-                    >
-                      <Camera className="w-6 h-6 mb-1 group-hover:text-primary" />
-                      <span className="text-[10px] font-bold uppercase">Photo</span>
-                    </button>
-                  )}
-                  <div className="flex-1 flex flex-col gap-2">
-                    <p className="text-xs text-on-surface-variant font-medium">
-                      {playerPhotos[player.id] ? 'Photo attached' : 'Optional: Take a photo of the final chip stack'}
-                    </p>
-                    {playerPhotos[player.id] && (
-                      <button 
-                        onClick={() => handleAIScan(player.id)}
-                        disabled={scanning[player.id]}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-bold hover:bg-primary/20 transition-all w-fit disabled:opacity-50"
-                      >
-                        {scanning[player.id] ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>Scanning...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-3 h-3" />
-                            <span>Scan with AI</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      capture="environment"
-                      className="hidden" 
-                      ref={el => fileInputRefs.current[player.id] = el}
-                      onChange={e => handlePhotoUpload(player.id, e)}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+  const valid=(id:string)=>typeof stacks[id]==='string'&&stacks[id].trim()!==''&&Number.isFinite(Number(stacks[id]))&&Number(stacks[id])>=0&&Number(stacks[id])<=100000000&&Number.isSafeInteger(chipCents(stacks[id],exchangeRate));
+  const complete=players.length>0&&players.every(p=>valid(p.id));
+  const next=players.map(p=>({...p,finalStackValue:valid(p.id)?chipCents(stacks[p.id],exchangeRate)/100:0,...(photos[p.id]?{photoUrl:photos[p.id]}:{})}));
+  const {totalIn,totalOut,difference}=reconciliation(next);
+  const blocked=!complete||difference!==0||Object.values(busy).some(Boolean)||Object.keys(reviews).length>0||saving;
+  const submit=async()=>{if(blocked)return;setSaving(true);try{if(await onComplete(next))localStorage.removeItem(draftKey);}finally{setSaving(false);}};
+  return <div className="space-y-5">
+    <section><p className="club-kicker text-secondary">03 / Count &amp; reconcile</p><h2 className="font-serif text-4xl mt-2">Count the stacks.</h2><p className="text-sm text-on-surface-variant mt-2">Photograph one player’s chips, review the count, or enter the chip value manually. Lay out stacks by color in good light.</p></section>
+    <section className="club-hero p-5 sm:p-7"><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-[#dae5d9]">Accounted for</p><p className="club-money text-3xl font-bold">${money(totalOut)}</p></div><div><p className="text-xs text-[#dae5d9]">Total buy-ins</p><p className="club-money text-3xl font-bold">${money(totalIn)}</p></div></div><div className="mt-4 text-xs flex items-center justify-between border-t border-white/20 pt-4"><span>{players.filter(p=>valid(p.id)).length} / {players.length} stacks entered</span><span>{difference===0?'Balanced':(difference>0?'Remaining $':'Over by $')+money(Math.abs(difference))}</span></div></section>
+    {players.map(p=>{const id=p.id;const review=reviews[id];let total=0;let good=true;if(review){try{total=stackTotal(review.counts,exchangeRate.chipValues);}catch{good=false;}}
+      return <section key={id} className="club-card p-5 space-y-4">
+        <div className="flex justify-between items-center gap-3"><div><h3 className="font-headline font-bold text-lg">{p.name}</h3><p className="text-xs text-on-surface-variant">Buy-ins ${p.buyIns.reduce((a,b)=>a+b,0).toFixed(2)} · Earlier cash-outs ${p.cashOuts.reduce((a,b)=>a+b,0).toFixed(2)}</p></div>{valid(id)&&<CheckCircle2 className="text-primary shrink-0" size={22}/>}</div>
+        <div><label className="text-xs font-bold" htmlFor={'stack-'+id}>Final chip value (not number of chips)</label><div className="flex gap-3 items-center mt-1"><input id={'stack-'+id} type="number" inputMode="decimal" min="0" max="100000000" step="any" className="club-input flex-1 min-w-0 font-bold text-xl" placeholder="Enter value, or 0" value={stacks[id]??''} onChange={e=>{clearReview(id);setStacks(prev=>({...prev,[id]:e.target.value}));}}/><span className="font-bold text-primary whitespace-nowrap">{valid(id)?'$'+money(chipCents(stacks[id],exchangeRate)):'—'}</span></div></div>
+        <div className="flex gap-3 items-center">
+          {photos[id]&&<img src={photos[id]} alt="Chip stack" className="w-20 h-20 rounded-xl object-cover"/>}
+          <div className="flex-1 flex flex-wrap gap-2">
+            <label className={'club-secondary flex items-center gap-2 text-sm cursor-pointer '+(busy[id]?'opacity-50 pointer-events-none':'')}><Camera size={16}/>{photos[id]?'Retake photo':'Take photo'}<input type="file" accept="image/*" capture="environment" className="sr-only" disabled={busy[id]} onChange={e=>{const file=e.target.files?.[0];e.target.value='';void upload(id,file);}}/></label>
+            {photos[id]&&<button className="club-button text-sm flex gap-2 items-center" onClick={()=>runScan(id)} disabled={busy[id]||saving}>{busy[id]?<Loader2 className="animate-spin" size={16}/>:<Sparkles size={16}/>} Scan chips</button>}
+            {photos[id]&&<button aria-label="Remove photo" disabled={busy[id]} className="p-2 text-error" onClick={()=>{setPhotos(prev=>{const n={...prev};delete n[id];return n;});clearReview(id);}}><X size={20}/></button>}
+          </div>
         </div>
-      </div>
-
-      {!validStacks && <p className="text-sm text-error">Enter a non-negative final chip value for every player, including 0 for an empty stack.</p>}
-      <button 
-        onClick={handleSave}
-        disabled={!validStacks || saving || Object.values(scanning).some(Boolean)}
-        className="w-full py-4 bg-primary text-on-primary font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all text-sm md:text-base flex items-center justify-center gap-2 disabled:opacity-50"
-      >
-        <span>{saving ? 'SAVING...' : 'CALCULATE FINAL LEDGER'}</span>
-      </button>
-    </div>
-  );
+        {busy[id]&&<p role="status" className="text-xs text-primary">Processing photo…</p>}
+        {errors[id]&&<p role="alert" className="text-sm text-error">{errors[id]}</p>}
+        {review&&<div className="rounded-xl bg-surface-container-low p-4 space-y-3"><h4 className="font-bold">Review AI chip counts</h4><p className="text-xs text-on-surface-variant">Correct the estimated number of chips by color. AI may miss hidden chips.</p>
+          {review.warnings.map((w,i)=><p key={i} className="text-xs text-error flex gap-2"><AlertTriangle size={15}/>{w}</p>)}
+          {Object.entries(exchangeRate.chipValues).filter(([,v])=>v>0).map(([color,value])=><div key={color} className="grid grid-cols-[1fr_88px_80px] gap-2 items-center"><label htmlFor={id+'-'+color} className="text-sm">{color} <span className="text-outline">× {value}</span></label><input id={id+'-'+color} type="number" min="0" max="10000" step="1" className="club-input text-right" value={review.counts[color]??0} onChange={e=>setReviews(prev=>({...prev,[id]:{...review,counts:{...review.counts,[color]:e.target.value===''?NaN:Number(e.target.value)}}}))}/><span className="text-right text-sm font-bold">{Number.isFinite(review.counts[color]??0)?(review.counts[color]??0)*value:'—'}</span></div>)}
+          <div className="flex justify-between items-center border-t border-outline-variant/30 pt-3"><span className="font-bold">Total chip value</span><span className="font-bold text-primary">{good?total.toLocaleString():'Invalid count'}</span></div>
+          <button className="club-button w-full" disabled={!good} onClick={()=>{setStacks(prev=>({...prev,[id]:String(total)}));clearReview(id);}}>Confirm chip value{good?' · $'+money(chipCents(total,exchangeRate)):''}</button><button className="club-secondary w-full" onClick={()=>clearReview(id)}>Discard estimate / enter manually</button>
+        </div>}
+      </section>;
+    })}
+    {!complete?<p className="text-sm text-on-surface-variant">Enter every final stack, including zero for an empty stack.</p>:difference!==0?<div role="alert" className="club-card p-4 text-error text-sm"><strong>Check the count.</strong> The ledger is off by ${money(Math.abs(difference))}. Correct the stacks before finalizing.</div>:<p className="text-sm text-primary font-bold">All amounts balance. Ready to finalize.</p>}
+    <button className="club-button w-full" disabled={blocked} onClick={submit}>{saving?'Saving results…':'Finalize ledger'}</button>
+  </div>;
 }
