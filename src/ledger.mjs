@@ -112,3 +112,17 @@ export function replaceInitialBuyIn(buyIns,amount){
   const cents=moneyCents(amount);if(cents<=0)throw new Error('Enter a positive buy-in.');
   return [cents/100,...buyIns.slice(1)];
 }
+
+export function buyInChipsToCents(units,rate){
+  if(typeof units!=='number'||!Number.isFinite(units)||units<=0||units>100000000)throw new Error('Enter a positive chip value up to 100,000,000.');
+  const cents=chipsToCents(units,rate),raw=units*rate.baseCurrency/rate.chips*100;
+  if(cents<=0||Math.abs(raw-cents)>1e-5)throw new Error('Choose a chip value worth a whole number of cents at this table rate.');
+  return cents;
+}
+// Missing units means currency for compatibility with existing clients and records.
+export function buyInEntryCents(data,rate){
+  if(data.unit===undefined||data.unit==='currency')return moneyCents(data.amount);
+  if(data.unit!=='chips')throw new Error('Invalid buy-in unit.');
+  if(!data.rate||data.rate.baseCurrency!==rate.baseCurrency||data.rate.chips!==rate.chips)throw new Error('Table exchange rate changed. Review the chip value and retry.');
+  return buyInChipsToCents(data.amount,rate);
+}

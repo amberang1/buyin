@@ -15,3 +15,7 @@ test('one-device operator is not required to register their own player seat',()=
  const html=renderToStaticMarkup(React.createElement(Panel,{...props,uid:'host',host:true}));
  assert.match(html,/Manage the table/);assert.match(html,/Link my own player seat \(optional\)/);assert.doesNotMatch(html,/Join as a player|Initial buy-in/);
 });
+test('guest buy-in entry is labelled in chip units',()=>{
+ const html=renderToStaticMarkup(React.createElement(Panel,props));assert.match(html,/Chip value \(units\)/);assert.doesNotMatch(html,/Amount \(\$\)/);
+ const initial=renderToStaticMarkup(React.createElement(Panel,{...props,uid:'new'}));assert.match(initial,/Initial buy-in \(chip units, optional\)/);
+});

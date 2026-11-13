@@ -1,4 +1,4 @@
-import { moneyCents, chipsToCents, cashOutCents } from './ledger.mjs';
+import { moneyCents, chipsToCents, cashOutCents, buyInEntryCents } from './ledger.mjs';
 import { mutateRoom, validatePlayer } from './mutations.mjs';
 export const participationActions = ['enroll','request','resolve','payment'];
 const fail = message => { throw new Error(message); };
@@ -20,9 +20,9 @@ export function mutateParticipation(game, original, previousRequests, previousPa
     const p={id,name,ownerUid:uid,buyIns:[],cashOuts:[],finalStackValue:0};
     validatePlayer(p);players.push(p);
     if(data.amount!==undefined){
-      const amount=moneyCents(data.amount)/100;if(amount<=0)fail('Initial buy-in must be positive.');
+      const amount=buyInEntryCents(data,game.exchangeRate)/100;if(amount<=0)fail('Initial buy-in must be positive.');
       if(requests.length>=1000)fail('Request limit reached.');
-      requests.push({id,uid,playerId:p.id,playerName:p.name,kind:'buyIn',amount,rate:structuredClone(game.exchangeRate),status:'requested',createdAt:now});
+      requests.push({id,uid,playerId:p.id,playerName:p.name,kind:'buyIn',amount,...(data.unit==='chips'?{chipValue:data.amount}:{}),rate:structuredClone(game.exchangeRate),status:'requested',createdAt:now});
     }
   }else if(action==='request'){
     if(!open)fail('Requests are closed during settlement.');
@@ -36,10 +36,10 @@ export function mutateParticipation(game, original, previousRequests, previousPa
       if(!own||own.id!==p.id)fail('You can only request transactions for your own seat.');
       if(data.kind==='cashOut'&&game.status!=='active')fail('Cash-outs are available during play.');
     }
-    const amount=data.kind==='claim'?0:data.kind==='buyIn'?moneyCents(data.amount)/100:data.amount;
+    const amount=data.kind==='claim'?0:data.kind==='buyIn'?buyInEntryCents(data,game.exchangeRate)/100:data.amount;
     if(data.kind!=='claim'&&(!Number.isFinite(amount)||amount<=0||amount>100000000))fail('Enter a valid positive amount.');
     if(data.kind==='cashOut'&&chipsToCents(amount,game.exchangeRate)<=0)fail('Cash-out must be worth at least one cent.');
-    requests.push({id,uid,playerId:p.id,playerName:p.name,kind:data.kind,amount,rate:structuredClone(game.exchangeRate),status:'requested',createdAt:now});
+    requests.push({id,uid,playerId:p.id,playerName:p.name,kind:data.kind,amount,...(data.kind==='buyIn'&&data.unit==='chips'?{chipValue:data.amount}:{}),rate:structuredClone(game.exchangeRate),status:'requested',createdAt:now});
   }else if(action==='resolve'){
     if(!host)fail('Only the host can resolve requests.');
     const r=requests.find(r=>r.id===data.id);
@@ -55,6 +55,7 @@ export function mutateParticipation(game, original, previousRequests, previousPa
       }else{
         if(p.ownerUid!==r.uid)fail('This request is no longer linked to the player.');
         if(r.kind==='cashOut'&&data.expectedPaidCents!==cashOutCents(players,r.amount,game.exchangeRate))fail('Cash-out payout changed. Review the updated amount and confirm again.');
+        if(r.chipValue!==undefined&&(r.rate.baseCurrency!==game.exchangeRate.baseCurrency||r.rate.chips!==game.exchangeRate.chips))fail('Table rate changed. Reject this request and ask the player to resend it.');
         r.entryIndex=(r.kind==='buyIn'?p.buyIns:p.cashOuts).length;
         const previousPaid=p.cashOuts.reduce((s,v)=>s+moneyCents(v),0);
         if(game.status==='setup'){

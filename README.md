@@ -51,3 +51,11 @@ New rooms use four-digit codes, including leading zeros. Existing six-digit invi
 One operator can manage the entire roster without registering a personal seat. Setup supports adding everyone; active play includes a host-only Add late player form that records the buy-in received. Players using other devices may still join and request links to those seats. A host's personal seat is optional.
 
 `tests/usage-flows.test.mjs` runs complete one-operator and multi-identity journeys through setup, rebuys, late arrivals, cash-outs, finalization and payouts, verifies identical final balances, and rejects guest direct writes and stale host edits. These use the actual shared validation/mutation functions, not live Firebase or interactive phone sessions.
+
+## Chip-based buy-in entry and shorter address
+
+Initial buy-ins, bulk entry, edits, late arrivals, guest requests and rebuys now accept total chip value, like cash-outs. Cash equivalents are shown before confirmation. Server requests explicitly mark chip units, while existing clients and stored buy-in arrays retain their currency meaning. Setup writes reject stale rates; chip requests cannot be approved after a rate change. Buy-in chip values must convert to whole cents, so cash received and chips issued can reconcile exactly.
+
+Run `bash scripts/map-bigstack-url.sh` from an authenticated Google Cloud Shell to request `bigstack.cloud.run` for the existing service. Availability and Preview support are verified by Google at mapping time, not by this repository. The old service address remains valid. Finish existing games on the original address: browser-local identity and drafts do not transfer automatically to a different origin. No automatic redirect is installed.
+
+`bash scripts/publish-live.sh` deploys the current checkout as a new revision, publishes rules, sends traffic to that exact revision, then requests the shorter address. It requires an authenticated Cloud Shell session. If the URL claim fails, the updated app is already live at its existing address; inspect the mapping error rather than assuming a new URL was claimed.

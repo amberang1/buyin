@@ -1,4 +1,4 @@
-import { moneyCents, chipsToCents, ledger, validRate, allocateStacks, validateSettings, cashOutCents, priorCashOutUnits } from './ledger.mjs';
+import { moneyCents, chipsToCents, ledger, validRate, allocateStacks, validateSettings, cashOutCents, priorCashOutUnits, buyInEntryCents } from './ledger.mjs';
 const canonical = v => Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const same = (a,b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 const fail = message => { throw new Error(message); };
@@ -24,6 +24,7 @@ export function mutateRoom(game, original, action, data) {
     validateSettings(data.rate); nextGame.exchangeRate=data.rate;
   } else if (action === 'setup') {
     if(game.status!=='setup') fail('Setup is closed.');
+    if(data.rate&&(data.rate.baseCurrency!==game.exchangeRate.baseCurrency||data.rate.chips!==game.exchangeRate.chips))fail('Table rate changed. Review the buy-in amounts and retry.');
     if(!Array.isArray(data.changes)||data.changes.length>30) fail('Invalid player changes.');
     for(const change of data.changes){
       const index=players.findIndex(p=>p.id===change.id), current=index<0?null:players[index];
@@ -37,7 +38,7 @@ export function mutateRoom(game, original, action, data) {
     if(players.length>=30||players.some(p=>p.id===data.id))fail('Player limit reached or seat already exists.');
     const name=typeof data.name==='string'?data.name.trim():'';
     if(players.some(p=>p.name.trim().toLowerCase()===name.toLowerCase()))fail('That player is already on the list.');
-    const amount=moneyCents(data.amount);if(amount<=0)fail('Enter the buy-in received.');
+    const amount=buyInEntryCents(data,game.exchangeRate);if(amount<=0)fail('Enter the buy-in received.');
     const player={id:data.id,name,buyIns:[amount/100],cashOuts:[],finalStackValue:0};
     validatePlayer(player);players.push(player);
   } else if(action==='phase'){
@@ -55,7 +56,7 @@ export function mutateRoom(game, original, action, data) {
       if(p[field].length<=(field==='buyIns'?1:0))fail('No entry to undo.');p[field].pop();if(field==='cashOuts'&&p.cashOutChipUnits)p.cashOutChipUnits.pop();
     }else{
       if(!same(data.rate,game.exchangeRate))fail('Table rate changed. Review the amount.');
-      const amount=data.type==='buyIn'?moneyCents(data.amount):cashOutCents(players,data.amount,game.exchangeRate);
+      const amount=data.type==='buyIn'?buyInEntryCents(data,game.exchangeRate):cashOutCents(players,data.amount,game.exchangeRate);
       if(amount<=0||p[field].length>=100)fail('Invalid amount or transaction limit reached.');if(field==='cashOuts'){p.cashOutChipUnits=p.cashOutChipUnits||p.cashOuts.map(v=>v*game.exchangeRate.chips/game.exchangeRate.baseCurrency);p.cashOutChipUnits.push(data.amount);}
       p[field].push(amount/100);
     }

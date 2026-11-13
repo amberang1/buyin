@@ -179,9 +179,9 @@ export default function App() {
     const ids=Array.from(new Set([...players.map(p=>p.id),...next.map(p=>p.id)]));
     const changes=ids.filter(id=>!samePlayer(players.find(p=>p.id===id),next.find(p=>p.id===id)))
       .map(id=>({id,before:players.find(p=>p.id===id)||null,after:next.find(p=>p.id===id)||null}));
-    return saveAction('setup',{changes});
+    return saveAction('setup',{changes,rate:exchangeRate});
   };
-  const handleRecordTransaction=(playerId:string,type:'buyIn'|'cashOut',amount:number)=>saveAction('record',{playerId,type,amount,rate:exchangeRate});
+  const handleRecordTransaction=(playerId:string,type:'buyIn'|'cashOut',amount:number)=>saveAction('record',{playerId,type,amount,rate:exchangeRate,...(type==='buyIn'?{unit:'chips'}:{})});
   const handleUndoTransaction=async(playerId:string,type:'buyIn'|'cashOut')=>{
     const expected=players.find(p=>p.id===playerId);if(!expected)return false;
     if(!confirm('Undo last '+(type==='buyIn'?'rebuy':'cash-out')+' for '+expected.name+'?'))return false;
@@ -270,7 +270,7 @@ export default function App() {
           <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <ActivePhase 
             players={players}
-            onAddPlayer={isHost?(name,amount)=>saveAction('addPlayer',{name,amount}):undefined}
+            onAddPlayer={isHost?(name,amount)=>saveAction('addPlayer',{name,amount,unit:'chips',rate:exchangeRate}):undefined}
             onTransaction={handleRecordTransaction}
             onUndo={handleUndoTransaction}
             exchangeRate={exchangeRate}

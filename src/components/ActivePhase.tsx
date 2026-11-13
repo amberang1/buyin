@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Player, ExchangeRate } from '../types';
 import { Wallet, LogOut } from 'lucide-react';
-import { sumCents, money, ledger, chipsToCents, moneyCents, cashToChips, formatMoney, cashOutCents } from '../ledger.mjs';
+import { sumCents, ledger, cashToChips, formatMoney, cashOutCents, buyInChipsToCents } from '../ledger.mjs';
 import ChipCounter from './ChipCounter';
 
 type Props = {
@@ -28,13 +28,13 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
   const totals=ledger(players);
   const totalPot=totals.tableCents/100;
   const [showCounter,setShowCounter]=useState(false);
-  let preview='',validAmount=false;
+  let preview='',validAmount=false,inputError='';
   try{if(amount.trim() && Number(amount)>0){
     const n=Number(amount);
-    const cents=transactionType==='cashOut'?cashOutCents(players,n,exchangeRate):moneyCents(n);
-    preview=transactionType==='cashOut'?formatMoney(cents):cashToChips(n,exchangeRate).toLocaleString()+' chip units';
+    const cents=transactionType==='cashOut'?cashOutCents(players,n,exchangeRate):buyInChipsToCents(n,exchangeRate);
+    preview=formatMoney(cents);
     validAmount=cents>0&&(transactionType!=='cashOut'||cents<=totals.tableCents);
-  }}catch{}
+  }}catch(e){inputError=(e as Error).message;}
   const handleTransaction = async () => {
     if (!selectedPlayerId || !transactionType || saving) return;
     const value = Number(amount);
@@ -51,8 +51,8 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
     }
   };
 
-  let validNew=false;try{validNew=!!newName.trim()&&newName.trim().length<=49&&moneyCents(Number(newBuyIn))>0;}catch{}
-  const addPlayer=async()=>{if(!onAddPlayer||!validNew||adding||saving||undoing)return;if(!confirm('Confirm '+newName.trim()+"’s buy-in has been received?"))return;setAdding(true);try{if(await onAddPlayer(newName.trim(),Number(newBuyIn))){setNewName('');setNewBuyIn('');setShowAdd(false);}}finally{setAdding(false)}};
+  let newCents=0,validNew=false;try{newCents=buyInChipsToCents(Number(newBuyIn),exchangeRate);validNew=!!newName.trim()&&newName.trim().length<=49&&newCents>0;}catch{}
+  const addPlayer=async()=>{if(!onAddPlayer||!validNew||adding||saving||undoing)return;if(!confirm('Confirm '+newName.trim()+"’s buy-in of "+newBuyIn+" chip units ("+formatMoney(newCents)+") has been received?"))return;setAdding(true);try{if(await onAddPlayer(newName.trim(),Number(newBuyIn))){setNewName('');setNewBuyIn('');setShowAdd(false);}}finally{setAdding(false)}};
   return (
     <>
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8 md:mb-12">
@@ -93,7 +93,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
         </div>
       </div>
 
-      {onAddPlayer&&<section className="club-card p-4 space-y-3"><button className="club-secondary w-full" disabled={adding||saving||undoing||players.length>=30} onClick={()=>setShowAdd(v=>!v)}>{showAdd?'Cancel adding player':'Add late player'}</button>{showAdd&&<form className="space-y-3" onSubmit={e=>{e.preventDefault();void addPlayer();}}><label className="block text-sm">Player name<input className="club-input w-full mt-1" maxLength={49} required value={newName} onChange={e=>setNewName(e.target.value)}/></label><label className="block text-sm">Buy-in received ($)<input type="number" inputMode="decimal" min="0.01" max="100000000" step="0.01" className="club-input w-full mt-1" required value={newBuyIn} onChange={e=>setNewBuyIn(e.target.value)}/></label><button className="club-button w-full" disabled={adding||saving||undoing||!validNew}>{adding?'Adding…':'Add player & buy-in'}</button></form>}</section>}
+      {onAddPlayer&&<section className="club-card p-4 space-y-3"><button className="club-secondary w-full" disabled={adding||saving||undoing||players.length>=30} onClick={()=>setShowAdd(v=>!v)}>{showAdd?'Cancel adding player':'Add late player'}</button>{showAdd&&<form className="space-y-3" onSubmit={e=>{e.preventDefault();void addPlayer();}}><label className="block text-sm">Player name<input className="club-input w-full mt-1" maxLength={49} required value={newName} onChange={e=>setNewName(e.target.value)}/></label><label className="block text-sm">Buy-in received (chip units)<input type="number" inputMode="decimal" min="0" max="100000000" step="any" className="club-input w-full mt-1" required value={newBuyIn} onChange={e=>setNewBuyIn(e.target.value)}/></label>{validNew&&<p className="text-sm text-primary">= {formatMoney(newCents)}</p>}<button className="club-button w-full" disabled={adding||saving||undoing||!validNew}>{adding?'Adding…':'Add player & buy-in'}</button></form>}</section>}
       <div className="space-y-3 md:space-y-4">
         {players.map((player, idx) => {
           const currentBuyIn = sumCents(player.buyIns)/100;
@@ -178,21 +178,21 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
             <div className="space-y-4 max-h-[65vh] overflow-y-auto">
               <div>
                 <label className="text-xs uppercase font-bold tracking-wider text-outline">
-                  {transactionType === 'buyIn' ? 'Amount ($)' : 'Amount (Chips)'}
+                  Chip value (units)
                 </label>
                 <input 
                   type="number" 
                   inputMode="decimal"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
-                  placeholder={transactionType === 'buyIn' ? '0.00' : '0'}
+                  placeholder="0" step="any"
                   className="w-full mt-1 border-b-2 border-outline-variant/50 focus:border-primary bg-transparent p-2 text-2xl md:text-3xl font-bold outline-none text-on-surface"
                   autoFocus
                 />
                 {preview && <p className="text-sm text-primary font-bold mt-2">= {preview}</p>}
-                {transactionType==='cashOut' && <button type="button" className="club-secondary w-full mt-3" onClick={()=>setShowCounter(v=>!v)}>{showCounter?'Hide chip calculator':'Count chips by color'}</button>}
-                {transactionType==='cashOut' && showCounter && <ChipCounter rate={exchangeRate} onApply={units=>{setAmount(String(units));setShowCounter(false)}}/>}
-                {amount&&preview&&!validAmount&&<p className="text-xs text-error mt-2">Amount is invalid or exceeds the available table balance.</p>}
+                {<button type="button" className="club-secondary w-full mt-3" onClick={()=>setShowCounter(v=>!v)}>{showCounter?'Hide chip calculator':'Count chips by color'}</button>}
+                {showCounter && <ChipCounter rate={exchangeRate} onApply={units=>{setAmount(String(units));setShowCounter(false)}}/>}
+                {amount&&!validAmount&&<p className="text-xs text-error mt-2">{inputError||'Enter a positive chip value within the available table balance.'}</p>}
               </div>
               
               <div className="flex gap-3 pt-6">

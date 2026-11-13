@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { sumCents, cashToChips, moneyCents, replaceInitialBuyIn } from '../ledger.mjs';
+import { sumCents, cashToChips, replaceInitialBuyIn, buyInChipsToCents, formatMoney } from '../ledger.mjs';
 import { Player, ExchangeRate } from '../types';
 import { RefreshCw, UserPlus, Users, Trash2, Play, Edit3 } from 'lucide-react';
 
@@ -19,14 +19,17 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   const [saving, setSaving] = useState(false);
-  const validInitial = newPlayerBuyIn.trim() === '' || (Number.isFinite(Number(newPlayerBuyIn)) && Number(newPlayerBuyIn) > 0 && Number(newPlayerBuyIn)<=100000000 && Number.isSafeInteger(Math.round(Number(newPlayerBuyIn) * 100)) && Math.round(Number(newPlayerBuyIn) * 100) > 0);
+  let initialCents=0,bulkCents=0,initialError='',bulkError='';
+  try{if(newPlayerBuyIn.trim())initialCents=buyInChipsToCents(Number(newPlayerBuyIn),exchangeRate);}catch(e){initialError=(e as Error).message;}
+  try{if(bulkBuyIn.trim())bulkCents=buyInChipsToCents(Number(bulkBuyIn),exchangeRate);}catch(e){bulkError=(e as Error).message;}
+  const validInitial=!initialError;
   const handleAddPlayer = async () => {
     if (!newPlayerName.trim() || newPlayerName.trim().length > 49 || !validInitial || saving || players.length>=30) return;
     
     const newPlayer: Player = {
       id: crypto.randomUUID(),
       name: newPlayerName.trim(),
-      buyIns: newPlayerBuyIn ? [moneyCents(Number(newPlayerBuyIn)) / 100] : [],
+      buyIns: newPlayerBuyIn ? [initialCents / 100] : [],
       cashOuts: [],
       finalStackValue: 0,
     };
@@ -41,8 +44,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   };
 
   const handleBulkApply = async () => {
-    const value=Number(bulkBuyIn);
-    const cents=Number.isFinite(value)&&value>0&&value<=100000000?moneyCents(value):NaN;
+    const cents=bulkCents;
     if (!Number.isSafeInteger(cents) || cents <= 0 || cents > 10000000000 || saving) return;
     setSaving(true);
     try {
@@ -68,7 +70,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
       <section className="space-y-2">
         <span className="text-[0.75rem] uppercase tracking-[0.1em] text-secondary font-bold">01 / Set the table</span>
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-on-surface font-serif">Set the table.</h1>
-        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Choose the exchange rate, define chip colors and add your players.</p>
+        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Choose the exchange rate, define chip colors and add your players. Enter total chip value, not the number of physical chips.</p>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
@@ -132,15 +134,16 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                 />
               </div>
               <div className="space-y-1 group">
-                <label className="text-[10px] uppercase font-bold tracking-wider text-outline group-focus-within:text-primary transition-colors">Initial Buy-In ($) - Optional</label>
+                <label className="text-[10px] uppercase font-bold tracking-wider text-outline group-focus-within:text-primary transition-colors">Initial buy-in (chip units) - optional</label>
                 <input 
                   type="number" 
                   inputMode="decimal"
                   placeholder="Leave blank to bulk enter later" 
-                  value={newPlayerBuyIn}
+                  step="any" value={newPlayerBuyIn}
                   onChange={e => setNewPlayerBuyIn(e.target.value)}
                   className="w-full bg-transparent border-none border-b border-outline-variant/30 focus:border-primary focus:ring-0 p-0 py-2 placeholder:text-outline-variant/50 transition-all font-medium outline-none text-base"
                 />
+                {newPlayerBuyIn&&<p className="text-xs text-primary">{initialError||"= "+formatMoney(initialCents)}</p>}
               </div>
               <button 
                 onClick={handleAddPlayer}
@@ -178,19 +181,20 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             <div className="px-6 md:px-8 py-4 bg-primary/5 border-b border-primary/10 animate-in slide-in-from-top duration-200">
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <label className="text-[10px] uppercase font-bold tracking-wider text-primary mb-1 block">Set initial buy-ins ($)</label>
+                  <label className="text-[10px] uppercase font-bold tracking-wider text-primary mb-1 block">Set initial buy-ins (chip units)</label>
                   <input 
                     type="number" 
                     inputMode="decimal"
                     placeholder="e.g. 200"
-                    value={bulkBuyIn}
+                    step="any" value={bulkBuyIn}
                     onChange={e => setBulkBuyIn(e.target.value)}
                     className="w-full bg-transparent border-b border-primary/30 focus:border-primary p-1 font-bold outline-none text-base"
                   />
+                  {bulkBuyIn&&<p className="text-xs text-primary">{bulkError||"= "+formatMoney(bulkCents)+" per player"}</p>}
                 </div>
                 <button 
                   onClick={handleBulkApply}
-                  disabled={saving || !Number.isSafeInteger(Math.round(Number(bulkBuyIn) * 100)) || Math.round(Number(bulkBuyIn) * 100) <= 0}
+                  disabled={saving || !!bulkError || bulkCents<=0}
                   className="px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-all"
                 >
                   APPLY TO ALL
@@ -231,7 +235,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                           <p className="text-[10px] text-outline text-right">{playerChips.toLocaleString()} Chips</p>
                         </div>
                       )}
-                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in for '+player.name,String(player.buyIns[0]||''));if(raw===null)return;const value=Number(raw);const cents=Number.isFinite(value)&&value>0&&value<=100000000?moneyCents(value):NaN;if(!Number.isSafeInteger(cents)||cents<=0){alert('Enter a positive amount.');return;}setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:replaceInitialBuyIn(p.buyIns,cents/100)}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
+                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in in chip units for '+player.name,String(player.buyIns.length?cashToChips(player.buyIns[0],exchangeRate):''));if(raw===null)return;let cents:number;try{cents=buyInChipsToCents(Number(raw),exchangeRate);}catch(e){alert((e as Error).message);return;}if(!confirm(Number(raw)+' chip units = '+formatMoney(cents)+'. Save initial buy-in?'))return;setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:replaceInitialBuyIn(p.buyIns,cents/100)}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
                       <button aria-label={'Remove '+player.name} onClick={() => removePlayer(player.id)} disabled={saving} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
                         <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
