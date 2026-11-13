@@ -8,11 +8,11 @@ type Props = {
 };
 
 export default function HomePhase({ busy, onCreateGame, onJoinGame }: Props) {
-  const [joinCode, setJoinCode] = useState('');
+  const [joinCode, setJoinCode] = useState(() => { const code = new URLSearchParams(window.location.search).get('room') || ''; return /^\d{6}$/.test(code) ? code : ''; });
 
   const handleJoin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (/^[a-f0-9]{32}$/.test(joinCode) && !busy) {
+    if (/^\d{6}$/.test(joinCode) && !busy) {
       onJoinGame(joinCode);
     }
   };
@@ -41,20 +41,20 @@ export default function HomePhase({ busy, onCreateGame, onJoinGame }: Props) {
 
         <form onSubmit={handleJoin} className="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/10 space-y-4">
           <div>
-            <label className="text-xs uppercase font-bold tracking-wider text-outline block mb-2 text-center">Paste private room code</label>
+            <label className="text-xs uppercase font-bold tracking-wider text-outline block mb-2 text-center">Enter 6-digit room code</label>
             <input 
               type="text" 
-              autoComplete="off" spellCheck={false}
-              maxLength={32}
+              autoComplete="off" inputMode="numeric" spellCheck={false}
+              maxLength={6}
               value={joinCode}
-              onChange={e => setJoinCode(e.target.value.trim().toLowerCase())}
-              placeholder="Paste room code"
-              className="w-full bg-surface-container-low border border-outline-variant/30 focus:border-primary rounded-xl p-4 text-center text-sm font-mono outline-none text-on-surface transition-colors"
+              onChange={e => setJoinCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              className="w-full bg-surface-container-low border border-outline-variant/30 focus:border-primary rounded-xl p-4 text-center text-3xl font-mono tracking-widest outline-none text-on-surface transition-colors"
             />
           </div>
           <button 
             type="submit"
-            disabled={busy || !/^[a-f0-9]{32}$/.test(joinCode)}
+            disabled={busy || !/^\d{6}$/.test(joinCode)}
             className="w-full py-3.5 bg-secondary text-on-secondary font-bold rounded-xl hover:bg-secondary-dim disabled:opacity-50 transition-all flex items-center justify-center gap-2 active:scale-95"
           >
             <Users className="w-5 h-5" />
