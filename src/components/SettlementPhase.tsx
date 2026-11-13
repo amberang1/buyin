@@ -5,9 +5,9 @@ import { scanChips, prepareChipPhoto } from '../scan';
 import ChipCounter from './ChipCounter';
 import { stackTotal, chipCents, money, reconciliation } from '../ledger.mjs';
 import ChipCounter from './ChipCounter';
-type Props={gameId:string;players:Player[];exchangeRate:ExchangeRate;onComplete:(players:Player[])=>Promise<boolean>};
+type Props={gameId:string;players:Player[];exchangeRate:ExchangeRate;onComplete:(players:Player[])=>Promise<boolean>;onReturnToPlay:()=>void};
 type Review={counts:Record<string,number>;warnings:string[]};
-export default function SettlementPhase({gameId,players,exchangeRate,onComplete}:Props){
+export default function SettlementPhase({gameId,players,exchangeRate,onComplete,onReturnToPlay}:Props){
   const draftKey='poker_stack_draft_'+gameId;
   const [stacks,setStacks]=useState<Record<string,string>>(()=>{try{return JSON.parse(localStorage.getItem(draftKey)||'{}')||{};}catch{return {};}});
   const [photos,setPhotos]=useState<Record<string,string>>({});
@@ -75,5 +75,6 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete}
     })}
     {!complete?<p className="text-sm text-on-surface-variant">Enter every final stack, including zero for an empty stack.</p>:difference!==0?<div role="alert" className="club-card p-4 text-error text-sm"><strong>Check the count.</strong> The ledger is off by ${money(Math.abs(difference))}. Correct the stacks before finalizing.</div>:<p className="text-sm text-primary font-bold">All amounts balance. Ready to finalize.</p>}
     <button className="club-button w-full" disabled={blocked} onClick={submit}>{saving?'Saving results…':'Finalize ledger'}</button>
+    <button className="club-secondary w-full" disabled={saving||Object.values(busy).some(Boolean)} onClick={onReturnToPlay}>Return to play / correct entries</button>
   </div>;
 }
