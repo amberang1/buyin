@@ -209,7 +209,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-on-surface-variant">AI Engine</span>
-            <span className="font-bold text-primary">Gemini 3 Flash</span>
+            <span className="font-bold text-primary">Gemini (server-configured)</span>
           </div>
         </div>
       </div>
