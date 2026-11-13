@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { ExchangeRate } from '../types';
 import { ArrowLeft, Palette, History, Calendar, Camera, Loader2, Plus, X } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { scanChips } from '../scan';
 
 type Props = {
+  canEdit: boolean;
   exchangeRate: ExchangeRate;
   setExchangeRate: (rate: ExchangeRate) => void;
   history: any[];
@@ -12,7 +13,7 @@ type Props = {
   gameId?: string | null;
 };
 
-export default function SettingsPhase({ exchangeRate, setExchangeRate, history, onBack, onLeaveGame, gameId }: Props) {
+export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, history, onBack, onLeaveGame, gameId }: Props) {
   const [newColorName, setNewColorName] = useState('');
   const [scanningColors, setScanningColors] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -47,7 +48,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !gameId || !canEdit) return;
 
     setScanningColors(true);
     try {
@@ -58,25 +59,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
         reader.readAsDataURL(file);
       });
       {
-        const base64Data = data.split(',')[1];
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        
-        const prompt = `Analyze this photo of poker chips. 
-        Identify all the distinct colors of the chips present in the image.
-        Return ONLY a comma-separated list of the colors you see (e.g., "Red, Blue, Green").
-        Do not include any other text or explanation.`;
-
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: {
-            parts: [
-              { inlineData: { mimeType: file.type || "image/jpeg", data: base64Data } },
-              { text: prompt }
-            ]
-          }
-        });
-
-        const result = response.text?.trim() || "";
+        const result = await scanChips(gameId, 'colors', data);
         const detectedColors = result.split(',').map(c => c.trim()).filter(c => c.length > 0);
         
         if (detectedColors.length > 0) {
@@ -109,7 +92,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
         <h2 className="text-3xl font-extrabold tracking-tight font-headline">Settings</h2>
       </div>
 
-      <div className="bg-surface-container-lowest p-5 rounded-xl shadow-sm space-y-4">
+      <fieldset disabled={!canEdit} className="min-w-0 border-0 p-5 bg-surface-container-lowest rounded-xl shadow-sm space-y-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <Palette className="text-primary w-5 h-5" />
@@ -177,7 +160,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
             <Plus className="w-4 h-4" />
           </button>
         </div>
-      </div>
+      </fieldset>
 
       <div className="bg-surface-container-lowest p-5 rounded-xl shadow-sm space-y-4">
         <div className="flex items-center gap-3">
