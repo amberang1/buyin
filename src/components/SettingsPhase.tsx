@@ -52,8 +52,13 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
     setScanningColors(true);
     try {
       const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
+      const data = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+      {
+        const base64Data = data.split(',')[1];
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         
         const prompt = `Analyze this photo of poker chips. 
@@ -65,7 +70,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
           model: "gemini-3-flash-preview",
           contents: {
             parts: [
-              { inlineData: { mimeType: "image/jpeg", data: base64Data } },
+              { inlineData: { mimeType: file.type || "image/jpeg", data: base64Data } },
               { text: prompt }
             ]
           }
@@ -85,8 +90,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
           });
           setExchangeRate({ ...exchangeRate, chipValues: newChipValues });
         }
-      };
-      reader.readAsDataURL(file);
+      }
     } catch (error) {
       console.error("AI Scan failed:", error);
       alert("Failed to scan chip colors. Please try again.");

@@ -132,7 +132,30 @@ export default function ResultsPhase({ players, onArchive }: Props) {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-end pt-4">
-          <button className="w-full sm:w-auto px-8 py-4 bg-surface-container-high text-on-surface-variant font-bold rounded-xl hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-2 text-sm md:text-base">
+          <button onClick={async () => {
+            const summary = balances.map(b => b.name + ': ' + (b.net >= 0 ? '+' : '-') + ' text-on-surface-variant font-bold rounded-xl hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-2 text-sm md:text-base">
+            <Share className="w-4 h-4" />
+            SHARE RESULTS
+          </button>
+          <button 
+            onClick={onArchive}
+            className="w-full sm:w-auto px-8 py-4 bg-primary text-on-primary font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all text-sm md:text-base"
+          >
+            ARCHIVE SESSION
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+ + Math.abs(b.net).toFixed(2)).join('\n');
+            try {
+              if (navigator.share) await navigator.share({ title: 'Session results', text: summary });
+              else { await navigator.clipboard.writeText(summary); alert('Results copied.'); }
+            } catch (error) {
+              if (!(error instanceof Error && error.name === 'AbortError')) alert('Could not share results.');
+            }
+          }} className="w-full sm:w-auto px-8 py-4 bg-surface-container-high text-on-surface-variant font-bold rounded-xl hover:bg-surface-container-highest transition-colors flex items-center justify-center gap-2 text-sm md:text-base">
             <Share className="w-4 h-4" />
             SHARE RESULTS
           </button>

@@ -4,15 +4,16 @@ import { Wallet, LogOut } from 'lucide-react';
 
 type Props = {
   players: Player[];
-  setPlayers: (players: Player[] | ((prev: Player[]) => Player[])) => void;
+  onTransaction: (playerId: string, type: 'buyIn' | 'cashOut', amount: number) => Promise<boolean>;
   exchangeRate: ExchangeRate;
   onSettle: () => void;
 };
 
-export default function ActivePhase({ players, setPlayers, exchangeRate, onSettle }: Props) {
+export default function ActivePhase({ players, onTransaction, exchangeRate, onSettle }: Props) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [transactionType, setTransactionType] = useState<'buyIn' | 'cashOut' | null>(null);
   const [amount, setAmount] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const totalPot = players.reduce((sum, p) => {
     const totalIn = p.buyIns.reduce((a, b) => a + b, 0);
@@ -20,27 +21,20 @@ export default function ActivePhase({ players, setPlayers, exchangeRate, onSettl
     return sum + (totalIn - totalOut);
   }, 0);
 
-  const handleTransaction = () => {
-    if (!selectedPlayerId || !transactionType || !amount) return;
-    const val = parseFloat(amount);
-    if (isNaN(val) || val <= 0) return;
-
-    setPlayers(prev => prev.map(p => {
-      if (p.id === selectedPlayerId) {
-        if (transactionType === 'buyIn') {
-          return { ...p, buyIns: [...p.buyIns, val] };
-        } else {
-          // Convert chips to cash amount
-          const cashValue = val * (exchangeRate.baseCurrency / exchangeRate.chips);
-          return { ...p, cashOuts: [...p.cashOuts, cashValue] };
-        }
+  const handleTransaction = async () => {
+    if (!selectedPlayerId || !transactionType || saving) return;
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return;
+    setSaving(true);
+    try {
+      if (await onTransaction(selectedPlayerId, transactionType, value)) {
+        setSelectedPlayerId(null);
+        setTransactionType(null);
+        setAmount('');
       }
-      return p;
-    }));
-
-    setSelectedPlayerId(null);
-    setTransactionType(null);
-    setAmount('');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -178,6 +172,7 @@ export default function ActivePhase({ players, setPlayers, exchangeRate, onSettl
               
               <div className="flex gap-3 pt-6">
                 <button 
+                  disabled={saving}
                   onClick={() => {
                     setSelectedPlayerId(null);
                     setTransactionType(null);
@@ -189,14 +184,14 @@ export default function ActivePhase({ players, setPlayers, exchangeRate, onSettl
                 </button>
                 <button 
                   onClick={handleTransaction}
-                  disabled={!amount || parseFloat(amount) <= 0}
+                  disabled={saving || !Number.isFinite(Number(amount)) || Number(amount) <= 0}
                   className={`flex-1 py-3.5 font-bold rounded-xl transition-colors shadow-sm ${
                     transactionType === 'buyIn' 
                       ? 'bg-secondary text-on-secondary hover:bg-secondary-dim' 
                       : 'bg-error text-on-error hover:bg-error-dim'
                   } disabled:opacity-50 disabled:shadow-none`}
                 >
-                  Confirm
+                  {saving ? 'Saving...' : 'Confirm'}
                 </button>
               </div>
             </div>

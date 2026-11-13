@@ -5,12 +5,12 @@ import { GoogleGenAI } from "@google/genai";
 
 type Props = {
   players: Player[];
-  setPlayers: (players: Player[] | ((prev: Player[]) => Player[])) => void;
-  exchangeRate: ExchangeRate;
-  onComplete: () => void;
+   exchangeRate: ExchangeRate;
+  onComplete: (players: Player[]) => Promise<boolean>;
 };
 
-export default function SettlementPhase({ players, setPlayers, exchangeRate, onComplete }: Props) {
+export default function SettlementPhase({ players, exchangeRate, onComplete }: Props) {
+  const [saving, setSaving] = useState(false);
   const [finalStacks, setFinalStacks] = useState<Record<string, string>>({});
   const [playerPhotos, setPlayerPhotos] = useState<Record<string, string>>({});
   const [scanning, setScanning] = useState<Record<string, boolean>>({});
@@ -51,18 +51,20 @@ export default function SettlementPhase({ players, setPlayers, exchangeRate, onC
         model: "gemini-3-flash-preview",
         contents: {
           parts: [
-            { inlineData: { mimeType: "image/jpeg", data: base64Data } },
+            { inlineData: { mimeType: photoData.match(/^data:([^;]+);/)?.[1] || "image/jpeg", data: base64Data } },
             { text: prompt }
           ]
         }
       });
 
-      const result = response.text?.trim() || "0";
-      const estimatedChips = parseInt(result.replace(/[^0-9]/g, '')) || 0;
+      const result = response.text?.trim() || "";
+      if (!/^\d+(\.\d+)?$/.test(result) || !Number.isFinite(Number(result))) throw new Error('Invalid scan result.');
+      const estimatedChips = Number(result);
       
       setFinalStacks(prev => ({ ...prev, [playerId]: estimatedChips.toString() }));
     } catch (error) {
       console.error("AI Scan failed:", error);
+      alert('Unable to read the chip stack reliably. Enter the value manually.');
     } finally {
       setScanning(prev => ({ ...prev, [playerId]: false }));
     }
@@ -76,10 +78,17 @@ export default function SettlementPhase({ players, setPlayers, exchangeRate, onC
     });
   };
 
-  const handleSave = () => {
-    setPlayers(prev => prev.map(p => {
-      const inputVal = parseFloat(finalStacks[p.id]) || 0;
-      const valueInCurrency = inputVal * (exchangeRate.baseCurrency / exchangeRate.chips);
+  const validStacks = players.length > 0 && players.every(p => {
+    const raw = finalStacks[p.id];
+    const cents = Number(raw) * exchangeRate.baseCurrency / exchangeRate.chips * 100;
+    return typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0 && Number.isSafeInteger(Math.round(cents));
+  }) && exchangeRate.baseCurrency > 0 && exchangeRate.chips > 0;
+
+  const handleSave = async () => {
+    if (!validStacks || saving || Object.values(scanning).some(Boolean)) return;
+    const next = players.map(p => {
+      const inputVal = Number(finalStacks[p.id]);
+      const valueInCurrency = Math.round(inputVal * (exchangeRate.baseCurrency / exchangeRate.chips) * 100) / 100;
       
       const updatedPlayer = { 
         ...p, 
@@ -93,8 +102,13 @@ export default function SettlementPhase({ players, setPlayers, exchangeRate, onC
       }
       
       return updatedPlayer;
-    }));
-    onComplete();
+    });
+    setSaving(true);
+    try {
+      await onComplete(next);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -122,7 +136,8 @@ export default function SettlementPhase({ players, setPlayers, exchangeRate, onC
                     <input 
                       type="number" 
                       inputMode="decimal"
-                      placeholder="0 chips"
+                      placeholder="Enter chips" 
+                      min="0"
                       value={finalStacks[player.id] || ''}
                       onChange={e => setFinalStacks({ ...finalStacks, [player.id]: e.target.value })}
                       className="w-full border border-outline-variant/30 rounded-xl p-2 text-right font-bold focus:border-primary focus:ring-1 focus:ring-primary outline-none bg-surface-container-lowest text-on-surface text-base"
@@ -195,11 +210,13 @@ export default function SettlementPhase({ players, setPlayers, exchangeRate, onC
         </div>
       </div>
 
+      {!validStacks && <p className="text-sm text-error">Enter a non-negative final chip value for every player, including 0 for an empty stack.</p>}
       <button 
         onClick={handleSave}
-        className="w-full py-4 bg-primary text-on-primary font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all text-sm md:text-base flex items-center justify-center gap-2"
+        disabled={!validStacks || saving || Object.values(scanning).some(Boolean)}
+        className="w-full py-4 bg-primary text-on-primary font-bold rounded-xl shadow-lg shadow-primary/20 hover:bg-primary-dim active:scale-95 transition-all text-sm md:text-base flex items-center justify-center gap-2 disabled:opacity-50"
       >
-        <span>CALCULATE FINAL LEDGER</span>
+        <span>{saving ? 'SAVING...' : 'CALCULATE FINAL LEDGER'}</span>
       </button>
     </div>
   );

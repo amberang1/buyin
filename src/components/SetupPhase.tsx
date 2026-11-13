@@ -6,7 +6,7 @@ type Props = {
   exchangeRate: ExchangeRate;
   setExchangeRate: (rate: ExchangeRate) => void;
   players: Player[];
-  setPlayers: (players: Player[] | ((prev: Player[]) => Player[])) => void;
+  setPlayers: (players: Player[] | ((prev: Player[]) => Player[])) => Promise<boolean>;
   onStart: () => void;
 };
 
@@ -16,32 +16,38 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   const [bulkBuyIn, setBulkBuyIn] = useState('');
   const [showBulkEdit, setShowBulkEdit] = useState(false);
 
-  const handleAddPlayer = () => {
-    if (!newPlayerName.trim()) return;
+  const [saving, setSaving] = useState(false);
+  const validInitial = newPlayerBuyIn.trim() === '' || (Number.isFinite(Number(newPlayerBuyIn)) && Number(newPlayerBuyIn) > 0 && Number.isSafeInteger(Math.round(Number(newPlayerBuyIn) * 100)) && Math.round(Number(newPlayerBuyIn) * 100) > 0);
+  const handleAddPlayer = async () => {
+    if (!newPlayerName.trim() || !validInitial || saving) return;
     
     const newPlayer: Player = {
       id: Math.random().toString(36).substr(2, 9),
       name: newPlayerName.trim(),
-      buyIns: newPlayerBuyIn ? [parseFloat(newPlayerBuyIn)] : [],
+      buyIns: newPlayerBuyIn ? [Math.round(Number(newPlayerBuyIn) * 100) / 100] : [],
       cashOuts: [],
       finalStackValue: 0,
     };
 
-    setPlayers(prev => [...prev, newPlayer]);
-    setNewPlayerName('');
-    setNewPlayerBuyIn('');
+    setSaving(true);
+    try {
+      if (await setPlayers(prev => [...prev, newPlayer])) {
+        setNewPlayerName('');
+        setNewPlayerBuyIn('');
+      }
+    } finally { setSaving(false); }
   };
 
-  const handleBulkApply = () => {
-    const val = parseFloat(bulkBuyIn);
-    if (isNaN(val)) return;
-    
-    setPlayers(prev => prev.map(p => ({
-      ...p,
-      buyIns: [val]
-    })));
-    setShowBulkEdit(false);
-    setBulkBuyIn('');
+  const handleBulkApply = async () => {
+    const cents = Math.round(Number(bulkBuyIn) * 100);
+    if (!Number.isSafeInteger(cents) || cents <= 0 || saving) return;
+    setSaving(true);
+    try {
+      if (await setPlayers(prev => prev.map(p => ({ ...p, buyIns: [cents / 100] })))) {
+        setShowBulkEdit(false);
+        setBulkBuyIn('');
+      }
+    } finally { setSaving(false); }
   };
 
   const removePlayer = (id: string) => {
@@ -51,8 +57,8 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   const totalTableValue = players.reduce((sum, p) => sum + (p.buyIns[0] || 0), 0);
   const totalChips = totalTableValue * (exchangeRate.chips / exchangeRate.baseCurrency);
   
-  const hasMissingBuyIns = players.some(p => p.buyIns.length === 0);
-  const canStart = players.length > 0 && !hasMissingBuyIns;
+  const hasMissingBuyIns = players.some(p => p.buyIns.length === 0 || p.buyIns.some(v => !Number.isFinite(v) || v <= 0));
+  const canStart = !saving && players.length > 0 && !hasMissingBuyIns && exchangeRate.baseCurrency > 0 && exchangeRate.chips > 0;
 
   return (
     <>
@@ -139,7 +145,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
               </div>
               <button 
                 onClick={handleAddPlayer}
-                disabled={!newPlayerName.trim()}
+                disabled={saving || !newPlayerName.trim() || !validInitial}
                 className="w-full py-3.5 md:py-4 bg-secondary text-on-secondary font-bold rounded-lg hover:bg-secondary-dim disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95"
               >
                 <span>ADD TO GAME</span>
@@ -185,6 +191,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                 </div>
                 <button 
                   onClick={handleBulkApply}
+                  disabled={saving || !Number.isSafeInteger(Math.round(Number(bulkBuyIn) * 100)) || Math.round(Number(bulkBuyIn) * 100) <= 0}
                   className="px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-all"
                 >
                   APPLY TO ALL
@@ -225,7 +232,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                           <p className="text-[10px] text-outline text-right">{playerChips.toLocaleString()} Chips</p>
                         </div>
                       )}
-                      <button onClick={() => removePlayer(player.id)} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
+                      <button onClick={() => removePlayer(player.id)} disabled={saving} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
                         <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
                     </div>
