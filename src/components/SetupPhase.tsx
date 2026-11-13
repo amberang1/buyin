@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { sumCents, cashToChips } from '../ledger.mjs';
 import { Player, ExchangeRate } from '../types';
 import { RefreshCw, UserPlus, Users, Trash2, Play, Edit3 } from 'lucide-react';
 
@@ -18,7 +19,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   const [showBulkEdit, setShowBulkEdit] = useState(false);
 
   const [saving, setSaving] = useState(false);
-  const validInitial = newPlayerBuyIn.trim() === '' || (Number.isFinite(Number(newPlayerBuyIn)) && Number(newPlayerBuyIn) > 0 && Number.isSafeInteger(Math.round(Number(newPlayerBuyIn) * 100)) && Math.round(Number(newPlayerBuyIn) * 100) > 0);
+  const validInitial = newPlayerBuyIn.trim() === '' || (Number.isFinite(Number(newPlayerBuyIn)) && Number(newPlayerBuyIn) > 0 && Number(newPlayerBuyIn)<=100000000 && Number.isSafeInteger(Math.round(Number(newPlayerBuyIn) * 100)) && Math.round(Number(newPlayerBuyIn) * 100) > 0);
   const handleAddPlayer = async () => {
     if (!newPlayerName.trim() || newPlayerName.trim().length > 49 || !validInitial || saving) return;
     
@@ -41,7 +42,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
 
   const handleBulkApply = async () => {
     const cents = Math.round(Number(bulkBuyIn) * 100);
-    if (!Number.isSafeInteger(cents) || cents <= 0 || saving) return;
+    if (!Number.isSafeInteger(cents) || cents <= 0 || cents > 10000000000 || saving) return;
     setSaving(true);
     try {
       if (await setPlayers(prev => prev.map(p => ({ ...p, buyIns: [cents / 100] })))) {
@@ -55,8 +56,8 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
     setPlayers(prev => prev.filter(p => p.id !== id));
   };
 
-  const totalTableValue = players.reduce((sum, p) => sum + (p.buyIns[0] || 0), 0);
-  const totalChips = totalTableValue * (exchangeRate.chips / exchangeRate.baseCurrency);
+  const totalTableValue = sumCents(players.flatMap(p=>p.buyIns))/100;
+  const totalChips = cashToChips(totalTableValue,exchangeRate);
   
   const hasMissingBuyIns = players.some(p => p.buyIns.length === 0 || p.buyIns.some(v => !Number.isFinite(v) || v <= 0));
   const canStart = !saving && players.length >= 2 && !hasMissingBuyIns && exchangeRate.baseCurrency > 0 && exchangeRate.chips > 0;
@@ -203,7 +204,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
               </div>
             ) : (
               players.map((player, idx) => {
-                const playerChips = (player.buyIns[0] || 0) * (exchangeRate.chips / exchangeRate.baseCurrency);
+                const playerChips = cashToChips(sumCents(player.buyIns)/100,exchangeRate);
                 const isMissingBuyIn = player.buyIns.length === 0;
                 
                 return (
