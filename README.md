@@ -9,7 +9,7 @@ Dedicated Firebase project: `buy-in-d6405`. Create its `(default)` Firestore dat
 1. Run `npm ci`.
 2. Enable **Anonymous** sign-in in Firebase Authentication for the project in `firebase-applet-config.json`.
 3. Deploy `firestore.rules` to the **(default) Firestore database** in Buy In: `firebase deploy --only firestore:rules --project buy-in-d6405`.
-4. Rotate or revoke any Gemini key previously shipped in the browser. Set a new `GEMINI_API_KEY` in server secrets (or local .env).
+4. Rotate or revoke any Gemini key previously shipped in the browser. Set a new `GEMINI_API_KEY` in server secrets (or local .env). Scanning defaults to `gemini-3.5-flash-lite`; override with the server environment variable `GEMINI_MODEL`.
 5. Run `npm run dev` (Express with Vite middleware; port 3000 by default).
 6. Give the Node server Application Default Credentials with Firestore read/write permissions (e.g. a Cloud Run runtime service account with Cloud Datastore User in this Firebase project). For local development use ADC via gcloud or a local credential file outside the repo. Never put a service account key in the client or GitHub.
 7. Run `npm run lint` and `npm run build`. For production run `npm start` and deploy the Node server over HTTPS; static-only hosting will not support room access, ledger edits, or scanning. `npm run preview` also runs this Node server against the built frontend. Never expose the development server publicly.
