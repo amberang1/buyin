@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { ExchangeRate } from '../types';
 import { ArrowLeft, Palette, History, Calendar, Camera, Loader2, Plus, X } from 'lucide-react';
-import { scanChips } from '../scan';
+import { scanChips, prepareChipPhoto } from '../scan';
 
 type Props = {
   canEdit: boolean;
@@ -19,7 +19,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleAddColor = () => {
-    if (!newColorName.trim()) return;
+    if (!/^[A-Za-z][A-Za-z -]{0,29}$/.test(newColorName.trim()) || ['constructor','prototype'].includes(newColorName.trim().toLowerCase())) { alert('Use a color name with letters, spaces or hyphens.'); return; }
     setExchangeRate({
       ...exchangeRate,
       chipValues: {
@@ -52,12 +52,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
 
     setScanningColors(true);
     try {
-      const reader = new FileReader();
-      const data = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
+      const data = await prepareChipPhoto(file);
       {
         const result = await scanChips(gameId, 'colors', data);
         const detectedColors = result.split(',').map(c => c.trim()).filter(c => c.length > 0);
