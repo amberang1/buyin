@@ -8,9 +8,55 @@ service cloud.firestore {
   function member(id) { return signedIn() && validRoom(id) && exists(/databases/$(database)/documents/games/$(id)/members/$(request.auth.uid)); }
   function canRead(id) { return host(id) || member(id); }
   function validGame(d) {
-   return d.keys().hasAll(['status','exchangeRate','createdAt','hostId']) &&
-    d.keys().hasOnly(['status','exchangeRate','createdAt','hostId']) &&
-    d.status in ['setup','active','settlement','results'] && d.createdAt is string && d.hostId is string &&
+   return d.keys().hasAll(['status','exchangeRate','createdAt','hostId','roomCode']) &&
+    d.keys().hasOnly(['status','exchangeRate','createdAt','hostId','roomCode']) &&
+    d.status in ['setup','active','settlement','results'] && d.createdAt is string && d.hostId is string && d.roomCode is string && d.roomCode.matches('^[0-9]{6}
+    d.exchangeRate is map && d.exchangeRate.keys().hasOnly(['baseCurrency','chips','chipValues']) &&
+    d.exchangeRate.baseCurrency is number && d.exchangeRate.baseCurrency > 0 && d.exchangeRate.baseCurrency <= 1000000 &&
+    d.exchangeRate.chips is number && d.exchangeRate.chips > 0 && d.exchangeRate.chips <= 100000000 &&
+    d.exchangeRate.chipValues is map && d.exchangeRate.chipValues.size() <= 30;
+  }
+  function validPlayer(d,id) {
+   return d.keys().hasAll(['id','name','buyIns','cashOuts','finalStackValue']) &&
+    d.keys().hasOnly(['id','name','buyIns','cashOuts','finalStackValue','photoUrl']) &&
+    d.id == id && d.name is string && d.name.size() > 0 && d.name.size() < 50 &&
+    d.buyIns is list && d.buyIns.size() <= 100 && d.cashOuts is list && d.cashOuts.size() <= 100 &&
+    d.finalStackValue is number && d.finalStackValue >= 0 && d.finalStackValue <= 100000000 &&
+    (!('photoUrl' in d) || (d.photoUrl is string && d.photoUrl.size() < 900000));
+  }
+  match /games/{gameId} {
+   allow get: if canRead(gameId);
+   allow list, delete: if false;
+   allow create: if false; // Only the authenticated backend allocates rooms and codes.
+   allow update: if host(gameId) && validGame(request.resource.data) &&
+     request.resource.data.hostId == resource.data.hostId && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.roomCode == resource.data.roomCode &&
+     ((resource.data.status == 'setup' && request.resource.data.status == 'setup') ||
+      (request.resource.data.exchangeRate == resource.data.exchangeRate &&
+       ((resource.data.status == 'setup' && request.resource.data.status == 'active') ||
+        (resource.data.status == 'active' && request.resource.data.status == 'settlement') ||
+        (resource.data.status == 'settlement' && request.resource.data.status == 'results'))));
+   match /members/{uid} {
+    allow get: if signedIn() && validRoom(gameId) && (uid == request.auth.uid || host(gameId));
+    allow list: if host(gameId);
+    allow create: if false; // Only the backend can grant membership after code verification.
+    allow update: if false;
+    allow delete: if host(gameId);
+   }
+   match /players/{playerId} {
+    allow read: if canRead(gameId);
+    allow create: if host(gameId) && get(gamePath(gameId)).data.status == 'setup' && validPlayer(request.resource.data,playerId);
+    allow update: if host(gameId) && validPlayer(request.resource.data,playerId) &&
+      ((get(gamePath(gameId)).data.status == 'setup' && getAfter(gamePath(gameId)).data.status == 'setup') ||
+       (get(gamePath(gameId)).data.status == 'active' && getAfter(gamePath(gameId)).data.status == 'active' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['buyIns','cashOuts'])) ||
+       (get(gamePath(gameId)).data.status == 'settlement' && getAfter(gamePath(gameId)).data.status == 'results' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['finalStackValue','photoUrl'])));
+    allow delete: if host(gameId) && get(gamePath(gameId)).data.status == 'setup';
+   }
+  }
+ }
+}
+) &&
     d.exchangeRate is map && d.exchangeRate.keys().hasOnly(['baseCurrency','chips','chipValues']) &&
     d.exchangeRate.baseCurrency is number && d.exchangeRate.baseCurrency > 0 && d.exchangeRate.baseCurrency <= 1000000 &&
     d.exchangeRate.chips is number && d.exchangeRate.chips > 0 && d.exchangeRate.chips <= 100000000 &&
