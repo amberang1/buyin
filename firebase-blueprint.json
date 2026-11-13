@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "Game": {
+      "title": "Game",
+      "description": "A poker game session/room.",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["setup", "active", "settlement", "results"],
+          "description": "Current phase of the game"
+        },
+        "exchangeRate": {
+          "type": "object",
+          "properties": {
+            "baseCurrency": { "type": "number" },
+            "chips": { "type": "number" },
+            "chipColor": { "type": "string" }
+          },
+          "required": ["baseCurrency", "chips", "chipColor"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "hostId": {
+          "type": "string",
+          "description": "UID of the user who created the game"
+        }
+      },
+      "required": ["status", "exchangeRate", "createdAt", "hostId"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "A player in a poker game.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "buyIns": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "cashOuts": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "finalStackValue": { "type": "number" },
+        "photoUrl": { "type": "string" },
+        "userId": {
+          "type": "string",
+          "description": "UID of the user who claimed this player slot"
+        }
+      },
+      "required": ["name", "buyIns", "cashOuts", "finalStackValue"]
+    }
+  },
+  "firestore": {
+    "/games/{gameId}": {
+      "schema": { "$ref": "#/entities/Game" },
+      "description": "The root game document containing settings and status."
+    },
+    "/games/{gameId}/players/{playerId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Players participating in the game."
+    }
+  }
+}

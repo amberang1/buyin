@@ -1,11 +1,27 @@
-<div align="center">
+# Buy In - Poker Ledger & Chip Scanner
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+A real-time poker table ledger, buy-in manager, and AI chip scanner built with React, Vite, Tailwind CSS, and Firebase Firestore.
 
-  <h1>Built with AI Studio</h2>
+## Features
+- **Table Stakes & Chip Configurations**: Customize chip values or scan starting stacks with Gemini AI.
+- **Bulk & Individual Buy-in Management**: Track table stakes with optional upfront buy-ins and validation.
+- **Active Game Live Reconciliation**: Track re-buys and mid-game cash-outs with instant pot calculations.
+- **End-of-Game Settlement**: Input chip stacks manually or scan them with AI to calculate net winnings/losses and final debts.
+- **Persistent Sessions**: Sessions persist locally and sync across participants via Firebase Firestore.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Setup & Running Locally
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-</div>
+2. **Run dev server**:
+   ```bash
+   npm run dev
+   ```
+
+3. **Build for production**:
+   ```bash
+   npm run build
+   ```

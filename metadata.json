@@ -1,0 +1,10 @@
+{
+  "name": "Buy In",
+  "description": "Real-time poker ledger, buy-in manager, and AI chip scanner",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
