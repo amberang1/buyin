@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { parseStackScan } from './src/ledger.mjs';
 import { GoogleAuth } from 'google-auth-library';
 import { randomInt } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
@@ -175,7 +176,8 @@ app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
     if (fields.hostId?.stringValue !== account.localId ||
         fields.status?.stringValue !== (mode === 'colors' ? 'setup' : 'settlement')) return res.status(403).json({ error: 'Only the host can scan in this phase.' });
     if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'AI scanning is not configured.' });
-    let prompt = 'Identify the distinct poker chip colors in this photo. Return only a comma-separated list of color names.';
+    let prompt = 'Identify the distinct main poker chip colors in this photo. Return only a comma-separated list of color names.';
+    let denominations;
     if (mode === 'stack') {
       const values = fields.exchangeRate?.mapValue?.fields?.chipValues?.mapValue?.fields || {};
       const entries = Object.entries(values);
@@ -183,8 +185,9 @@ app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
         const n = Number(v.integerValue ?? v.doubleValue);
         return !colorPattern.test(name) || !Number.isFinite(n) || n < 0 || n > 1000000;
       })) return res.status(400).json({ error: 'Invalid chip denominations.' });
-      const denominations = Object.fromEntries(entries.map(([name,v]) => [name, Number(v.integerValue ?? v.doubleValue)]));
-      prompt = 'Estimate the total chip denomination value in this photo using this mapping: ' + JSON.stringify(denominations) + '. Return only a non-negative number. Return 0 if no chips are visible.';
+      denominations = Object.fromEntries(entries.map(([name,v]) => [name, Number(v.integerValue ?? v.doubleValue)]).filter(([,v])=>v>0));
+      if (!Object.keys(denominations).length) return res.status(400).json({error:'Set positive chip denominations in setup first.'});
+      prompt = 'Count individual poker chips by their MAIN color, using ONLY these configured color names: ' + JSON.stringify(Object.keys(denominations)) + '. Count visible stack edges and separate stacks, never treat edge stripes as separate chips. Never invent a hidden count. Report uncertain, obscured or unmatched chips in warnings. Return JSON only: {"counts":[{"color":"exact configured name","count":integer}],"warnings":["short warning"]}. If no chips can be identified, return empty counts. Do not calculate the total.';
     }
     if (!take(account.localId)) return res.status(429).json({ error: 'Scan limit reached. Try again in a minute.' });
     inFlight++;
@@ -192,12 +195,13 @@ app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const answer = await ai.models.generateContent({
         model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
-        contents: { parts: [{ inlineData: { mimeType, data: image } }, { text: prompt }] }
+        contents: { parts: [{ inlineData: { mimeType, data: image } }, { text: prompt }] },
+        ...(mode === "stack" ? { config: { responseMimeType: "application/json" } } : {})
       });
       const raw = answer.text?.trim() || '';
       if (mode === 'stack') {
-        if (!/^\d+(\.\d+)?$/.test(raw) || !Number.isFinite(Number(raw)) || Number(raw) > 100000000) return res.status(422).json({ error: 'Unreliable scan. Enter manually.' });
-        return res.json({ result: raw });
+        try { const review = parseStackScan(raw, denominations); return res.json({ result: JSON.stringify(review) }); }
+        catch { return res.status(422).json({ error: 'Could not identify a reliable chip count. Try a clearer photo or enter manually.' }); }
       }
       const names = raw.split(',').map(x => x.trim());
       if (!names.length || names.length > 30 || names.some(x => !colorPattern.test(x) || ['constructor','prototype'].includes(x.toLowerCase()))) return res.status(422).json({ error: 'Unreliable colors. Enter manually.' });
