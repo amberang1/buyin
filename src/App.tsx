@@ -6,7 +6,8 @@ import ActivePhase from './components/ActivePhase';
 import SettlementPhase from './components/SettlementPhase';
 import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
-import { Menu, History, Settings, Layers, LogOut } from 'lucide-react';
+import { Spade, Settings, Layers, LogOut } from 'lucide-react';
+import { reconciliation } from './ledger.mjs';
 import { auth, db, ensureAnonymousUser } from './firebase';
 import { roomRequest } from './rooms';
 import { doc, collection, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
@@ -219,12 +220,16 @@ export default function App() {
     }
   };
 
-  const handleStartSession = () => advancePhase('setup', 'active');
+  const handleStartSession = () => {
+    if (players.length < 2 || players.some(p => !p.buyIns.length || p.buyIns.some(v => !Number.isFinite(v) || v <= 0))) { alert('Add at least two players with valid buy-ins.'); return; }
+    return advancePhase('setup', 'active');
+  };
   const handleSettleGame = () => advancePhase('active', 'settlement');
 
   // Save all final stacks and the results phase together, or save neither.
   const handleShowResults = async (next: Player[]) => {
     if (!gameId || !isHost || !next.length) return false;
+    if (reconciliation(next).difference !== 0) { alert('The ledger must balance before finalizing.'); return false; }
     try {
       await runTransaction(db, async tx => {
         const gameRef = doc(db, 'games', gameId);
@@ -282,8 +287,8 @@ export default function App() {
     <div className="bg-surface text-on-surface min-h-screen pb-28 md:pb-24 font-body">
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl flex justify-between items-center px-4 md:px-6 py-4 border-b border-outline-variant/10">
         <div className="flex items-center gap-3 md:gap-4">
-          <Menu className="text-primary w-6 h-6 cursor-pointer" />
-          <h1 className="text-2xl font-black text-on-surface font-serif tracking-tight italic">check</h1>
+          <Spade className="text-primary w-6 h-6" fill="currentColor" />
+          <h1 className="text-2xl font-black text-on-surface font-serif tracking-tight">Buy In</h1>
         </div>
         <div className="flex items-center gap-3">
           {gameId && roomCode && (
@@ -299,9 +304,7 @@ export default function App() {
               }}>Invite</button>}
             </div>
           )}
-          <div className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden">
-            <div className="w-full h-full bg-outline-variant/30" />
-          </div>
+          {gameId && <span className="hidden sm:inline text-xs font-bold text-outline">{isHost ? "Host" : "Guest"}</span>}
         </div>
       </header>
 
@@ -321,6 +324,7 @@ export default function App() {
             setExchangeRate={handleSetExchangeRate} 
             players={players} 
             setPlayers={handleSetPlayers}
+            onChipSettings={() => setPhase('settings')}
             onStart={handleStartSession}
           />
           </fieldset>
@@ -331,7 +335,7 @@ export default function App() {
             players={players}
             onTransaction={handleRecordTransaction}
             exchangeRate={exchangeRate}
-            onSettle={handleSettleGame}
+            onSettle={() => { if (confirm("End play and count final chip stacks?")) handleSettleGame(); }}
           />
           </fieldset>
         )}
@@ -366,7 +370,7 @@ export default function App() {
       </main>
 
       {phase !== 'home' && (
-        <nav className="fixed bottom-0 left-0 w-full h-16 flex justify-around items-center px-4 pb-safe bg-surface-container-lowest/80 backdrop-blur-xl z-50 shadow-[0_-12px_32px_rgba(62,94,149,0.06)] border-t border-surface-container-low/15">
+        <nav className="fixed bottom-0 left-0 w-full club-nav flex justify-around items-center px-4 bg-surface-container-lowest/80 backdrop-blur-xl z-50 shadow-[0_-12px_32px_rgba(62,94,149,0.06)] border-t border-surface-container-low/15">
           <button 
             onClick={() => setPhase(gamePhase)}
             className={`flex flex-col items-center justify-center transition-colors ${phase === 'active' || phase === 'setup' ? 'text-primary' : 'text-on-surface-variant'}`}
@@ -376,7 +380,7 @@ export default function App() {
           </button>
           
           <button 
-            onClick={() => gamePhase === 'active' ? handleSettleGame() : setPhase('settlement')}
+            onClick={() => gamePhase === 'active' ? (confirm('End play and count final chip stacks?') && handleSettleGame()) : setPhase('settlement')}
             disabled={!isHost || (gamePhase !== 'active' && gamePhase !== 'settlement')}
             className={`flex flex-col items-center justify-center transition-colors ${phase === 'settlement' ? 'text-primary' : 'text-on-surface-variant'} disabled:opacity-30`}
           >
