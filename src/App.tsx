@@ -9,7 +9,7 @@ import ActivePhase from './components/ActivePhase';
 import SettlementPhase from './components/SettlementPhase';
 import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
-import { Spade, Settings, Layers, LogOut, Home } from 'lucide-react';
+import { Settings, Layers, LogOut, Home } from 'lucide-react';
 import { validateSettings } from './ledger.mjs';
 import { db, ensureAnonymousUser, projectId } from './firebase';
 import { roomRequest, ledgerRequest } from './rooms';
@@ -227,11 +227,8 @@ export default function App() {
   );
   return (
     <div className="bg-surface text-on-surface min-h-screen pb-28 md:pb-24 font-body">
-      <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl flex justify-between items-center px-4 md:px-6 py-4 border-b border-outline-variant/10">
-        <div className="flex items-center gap-3 md:gap-4">
-          <Spade className="text-primary w-6 h-6" fill="currentColor" />
-          <h1 className="text-2xl font-black text-on-surface font-serif tracking-tight">Buy In</h1>
-        </div>
+      {phase !== 'home' && <header className="fixed top-0 w-full z-50 bg-surface/95 backdrop-blur-xl flex justify-between items-center gap-2 px-4 md:px-6 py-4 border-b border-outline-variant/10">
+        <h1 className="brand-wordmark brand-wordmark--compact">Big Stack</h1>
         <div className="flex items-center gap-3">
           {gameId && roomCode && (
             <div className="flex items-center gap-2">
@@ -248,14 +245,14 @@ export default function App() {
           )}
           {gameId && <span className="hidden sm:inline text-xs font-bold text-outline">{isHost ? "Host" : "Guest"}</span>}
         </div>
-      </header>
+      </header>}
 
-      <main className="pt-24 px-4 md:px-6 max-w-5xl mx-auto space-y-8 md:space-y-12">
+      <main className={(phase === 'home' ? 'pt-12 sm:pt-20' : 'pt-24') + " px-4 md:px-6 max-w-5xl mx-auto space-y-8 md:space-y-12"}>
         {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Your requests appear below. The host confirms financial entries.</p>}
         {gameId&&participationError&&<div role="alert" className="club-card p-4 text-error">{participationError}<button className="club-secondary ml-2" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
         {gameId&&userId&&phase!=='home'&&phase!=='settings'&&<ParticipationPanel uid={userId} host={isHost} phase={gamePhase} players={players} requests={requests} rate={exchangeRate} ready={participationReady} onAction={participantAction}/>}
         {phase === 'home' && (
-          <>{gameId&&<section className="club-card p-5 space-y-3"><h2 className="text-xl font-bold">Your saved room{roomCode?' · '+roomCode:''}</h2><p className="text-sm text-on-surface-variant">Your room and entries are saved. Resume whenever you’re ready.</p><button className="club-button w-full" onClick={resumeRoom}>Resume room</button></section>}<HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>
+          <><h1 className="brand-wordmark brand-wordmark--home">Big Stack</h1>{gameId&&<section className="club-card p-5 space-y-3"><h2 className="text-xl font-bold">Your saved room{roomCode?' · '+roomCode:''}</h2><p className="text-sm text-on-surface-variant">Your room and entries are saved. Resume whenever you’re ready.</p><button className="club-button w-full" onClick={resumeRoom}>Resume room</button></section>}<HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>
         )}
         {phase === 'setup' && (
           <fieldset disabled={!isHost||settingsBusy} className="min-w-0 space-y-6 border-0 p-0">

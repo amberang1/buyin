@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckCircle2, Share2, AlertTriangle, Spade } from 'lucide-react';
+import { CheckCircle2, Share2, AlertTriangle } from 'lucide-react';
 import PaymentTracker from './PaymentTracker';
 import { Player, Payment } from '../types';
 import { balance, reconciliation, money } from '../ledger.mjs';
@@ -9,14 +9,14 @@ export default function ResultsPhase({players,onArchive,archiveLabel="Archive & 
   const {totalIn,totalOut,difference}=reconciliation(players);
   const balanced=difference===0;
   const share=async()=>{
-    const summary=['Buy In · Final ledger',...rows.map(p=>p.name+': '+(p.netCents>=0?'+':'-')+'$'+money(Math.abs(p.netCents))),
+    const summary=['Big Stack · Final ledger',...rows.map(p=>p.name+': '+(p.netCents>=0?'+':'-')+'$'+money(Math.abs(p.netCents))),
       'Total in: $'+money(totalIn)+' · Total out: $'+money(totalOut),balanced?'Balanced':'Difference: $'+money(difference)].join('\n');
-    try{if(navigator.share)await navigator.share({title:'Buy In results',text:summary});else{await navigator.clipboard.writeText(summary);alert('Results copied.');}}
+    try{if(navigator.share)await navigator.share({title:'Big Stack results',text:summary});else{await navigator.clipboard.writeText(summary);alert('Results copied.');}}
     catch(error){if(!(error instanceof Error&&error.name==='AbortError'))window.prompt('Copy results',summary);}
   };
   return <div className="space-y-5">
     <section className="club-hero p-7 sm:p-9">
-      <div className="flex items-center gap-2 text-[#d7c69f] club-kicker"><Spade size={15}/> Session complete</div>
+      <div className="flex items-center gap-2 text-[#d7c69f] club-kicker">Session complete</div>
       <h2 className="font-serif text-4xl mt-4">The final tally.</h2>
       <div className="grid grid-cols-2 gap-4 mt-7"><div><p className="text-xs text-[#dae5d9]">Total buy-ins</p><p className="club-money text-3xl font-bold">${money(totalIn)}</p></div><div><p className="text-xs text-[#dae5d9]">Total returned</p><p className="club-money text-3xl font-bold">${money(totalOut)}</p></div></div>
     </section>

@@ -1,5 +1,5 @@
 {
-  "name": "Buy In",
+  "name": "Big Stack",
   "description": "Real-time poker ledger, buy-in manager, and AI chip scanner",
   "requestFramePermissions": [
     "camera"
