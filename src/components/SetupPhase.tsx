@@ -52,8 +52,8 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
     } finally { setSaving(false); }
   };
 
-  const removePlayer = (id: string) => {
-    setPlayers(prev => prev.filter(p => p.id !== id));
+  const removePlayer = async (id: string) => {
+    if(saving)return;setSaving(true);try{await setPlayers(prev => prev.filter(p => p.id !== id));}finally{setSaving(false);}
   };
 
   const totalTableValue = sumCents(players.flatMap(p=>p.buyIns))/100;
@@ -112,11 +112,12 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             </div>
           </div>
 
+          <div className="club-card p-4 flex justify-between items-center gap-3"><div><p className="font-bold text-sm">Chip denominations</p><p className="text-xs text-on-surface-variant">Set colors and values before scanning.</p></div><button onClick={onChipSettings} className="club-secondary text-sm">Configure</button></div>
           {/* Add player Card */}
           <div className="bg-surface-container-low p-6 md:p-8 rounded-xl space-y-6">
             <div className="flex items-center gap-3">
               <UserPlus className="text-primary w-5 h-5 md:w-6 md:h-6" />
-              <h3 className="text-lg font-bold tracking-tight font-headline">Add Competitor</h3>
+              <h3 className="text-lg font-bold tracking-tight font-headline">Add player</h3>
             </div>
             <div className="space-y-4">
               <div className="space-y-1 group">
