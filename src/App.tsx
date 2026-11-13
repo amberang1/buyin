@@ -167,8 +167,8 @@ export default function App() {
   const handleSetPlayers = async (newPlayersOrCb: Player[] | ((prev: Player[]) => Player[])) => {
     if (!gameId || !isHost) return false;
     const next = typeof newPlayersOrCb === 'function' ? newPlayersOrCb(players) : newPlayersOrCb;
-    const before = new Map(players.map(p => [p.id, p]));
-    const after = new Map(next.map(p => [p.id, p]));
+    const before = new Map<string, Player>(players.map((p: Player): [string, Player] => [p.id, p]));
+    const after = new Map<string, Player>(next.map((p: Player): [string, Player] => [p.id, p]));
     const ids = Array.from(new Set([...before.keys(), ...after.keys()]))
       .filter(id => !samePlayer(before.get(id), after.get(id)));
     try {
@@ -373,13 +373,12 @@ export default function App() {
           </fieldset>
         )}
         {phase === 'settlement' && (
-          <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
+          <fieldset key={gameId!} disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <SettlementPhase 
             players={players}
             exchangeRate={exchangeRate}
             onComplete={handleShowResults}
             onReturnToPlay={()=>{if(confirm('Return to play to correct buy-ins or cash-outs? Final chip count drafts will be retained for review.'))void advancePhase('settlement','active');}}
-            key={gameId!}
             gameId={gameId!}
           />
           </fieldset>
