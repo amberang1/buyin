@@ -7,9 +7,9 @@ import SettlementPhase from './components/SettlementPhase';
 import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
 import { Menu, History, Settings, Layers, LogOut } from 'lucide-react';
-import { auth, db } from './firebase';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
-import { doc, collection, onSnapshot, updateDoc, runTransaction, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db, ensureAnonymousUser } from './firebase';
+import { roomRequest } from './rooms';
+import { doc, collection, onSnapshot, updateDoc, runTransaction } from 'firebase/firestore';
 
 function samePlayer(a?: Player, b?: Player) {
   if (!a || !b) return a === b;
@@ -26,14 +26,11 @@ export default function App() {
   const [joining, setJoining] = useState(false);
   const isHost = !!userId && userId === hostId;
   useEffect(() => {
-    let signing = false;
-    return onAuthStateChanged(auth, user => {
-      if (user) { setUserId(user.uid); setAuthError(false); }
-      else if (!signing) {
-        setUserId(null); signing = true;
-        signInAnonymously(auth).catch(() => setAuthError(true)).finally(() => { signing = false; });
-      }
-    });
+    let mounted = true;
+    ensureAnonymousUser().then(user => {
+      if (mounted) { setUserId(user.uid); setAuthError(false); }
+    }).catch(error => { console.error(error); if (mounted) setAuthError(true); });
+    return () => { mounted = false; };
   }, []);
   const [phase, setPhase] = useState<Phase>('home');
   const [gamePhase, setGamePhase] = useState<Phase>('home');
@@ -41,6 +38,11 @@ export default function App() {
     const saved = localStorage.getItem('poker_current_game_id');
     return saved && /^[a-f0-9]{32}$/.test(saved) ? saved : null;
   });
+  const [roomCode, setRoomCode] = useState('');
+  const [readyRoom, setReadyRoom] = useState<string | null>(null);
+  const [readyPlayers, setReadyPlayers] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState('');
+  const [retry, setRetry] = useState(0);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate>({ 
     baseCurrency: 20, 
     chips: 100,
@@ -56,80 +58,75 @@ export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<any[]>(() => {
     const saved = localStorage.getItem('poker_history');
-    return saved ? JSON.parse(saved) : [];
+    try { return saved ? JSON.parse(saved) : []; } catch { return []; }
   });
 
-  // Listen to Firebase when gameId is set
+  // Never treat a cache miss or transient permission/network error as a reason
+  // to erase a saved room. Wait for both authoritative listeners on reload.
   useEffect(() => {
     if (!gameId || !userId) return;
-
+    setReadyRoom(null); setReadyPlayers(null); setRestoreError('');
     const gameRef = doc(db, 'games', gameId);
-    const unsubscribeGame = onSnapshot(gameRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setHostId(data.hostId);
-        if (data.status) {
-          setGamePhase(data.status as Phase);
-          setPhase(current => current === 'settings' ? current : data.status as Phase);
-        }
-        if (data.exchangeRate) {
-          setExchangeRate(data.exchangeRate);
-        }
-      } else {
-        setGameId(null);
-        localStorage.removeItem('poker_current_game_id');
-        setPlayers([]);
-        setGamePhase('home');
-        setPhase('home');
-        alert('Game not found. Check the room code.');
+    const unsubscribeGame = onSnapshot(gameRef, { includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.fromCache) return;
+      if (!snapshot.exists()) {
+        setRestoreError('This room could not be found. Retry or leave the room.');
+        return;
       }
+      const data = snapshot.data();
+      setHostId(data.hostId); setRoomCode(data.roomCode || '');
+      setGamePhase(data.status as Phase);
+      setPhase(current => current === 'settings' ? current : data.status as Phase);
+      setExchangeRate(data.exchangeRate);
+      setReadyRoom(gameId);
     }, error => {
-      console.error(error); setGameId(null); setHostId(null); setPlayers([]); setGamePhase('home'); setPhase('home');
-      localStorage.removeItem('poker_current_game_id');
-      alert('Room access denied. Check your invitation.');
+      console.error(error);
+      setRestoreError('Could not reconnect to your room. Your saved room has not been cleared.');
     });
+    const unsubscribePlayers = onSnapshot(collection(db, 'games', gameId, 'players'), { includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.fromCache) return;
+      setPlayers(snapshot.docs.map(p => ({ ...p.data(), id: p.id } as Player)));
+      setReadyPlayers(gameId);
+    }, error => {
+      console.error(error);
+      setRestoreError('Could not load the ledger. Your saved room has not been cleared.');
+    });
+    return () => { unsubscribeGame(); unsubscribePlayers(); };
+  }, [gameId, userId, retry]);
 
-    const playersRef = collection(db, 'games', gameId, 'players');
-    const unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
-      const loadedPlayers: Player[] = [];
-      snapshot.forEach(doc => {
-        loadedPlayers.push({ ...doc.data(), id: doc.id } as Player);
-      });
-      setPlayers(loadedPlayers);
-    }, error => { console.error(error); alert('Unable to load players. Please try again.'); });
-
-    return () => {
-      unsubscribeGame();
-      unsubscribePlayers();
-    };
-  }, [gameId, userId]); // Removed phase from dependencies to avoid infinite loops
+  const openRoom = (id: string) => {
+    localStorage.setItem('poker_current_game_id', id);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('room');
+    window.history.replaceState(null, '', url);
+    setHostId(null); setPlayers([]); setRoomCode(''); setRestoreError('');
+    setReadyRoom(null); setReadyPlayers(null); setGameId(id);
+  };
 
   const handleCreateGame = async () => {
-    if (!userId || joining) return;
+    if (!userId || joining || gameId) return;
     setJoining(true);
     try {
-      const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
-      await setDoc(doc(db, 'games', id), { status: 'setup', exchangeRate, createdAt: new Date().toISOString(), hostId: userId });
-      setPlayers([]); setHostId(userId); setGamePhase('setup'); setGameId(id);
-      localStorage.setItem('poker_current_game_id', id); setPhase('setup');
-    } catch (error) { console.error(error); alert('Could not create room.'); }
+      const pendingKey = 'poker_pending_room_' + userId;
+      let id = localStorage.getItem(pendingKey);
+      if (!id || !/^[a-f0-9]{32}$/.test(id)) {
+        id = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
+        localStorage.setItem(pendingKey, id);
+      }
+      const room = await roomRequest('create', { gameId: id, exchangeRate });
+      openRoom(room.gameId);
+      localStorage.removeItem(pendingKey);
+    } catch (error) { alert(error instanceof Error ? error.message : 'Could not create room.'); }
     finally { setJoining(false); }
   };
+
   const handleJoinGame = async (code: string) => {
-    if (!userId || joining || !/^[a-f0-9]{32}$/.test(code)) return;
+    if (!userId || joining || gameId || !/^\d{6}$/.test(code)) return;
     setJoining(true);
     try {
-      const game = doc(db, 'games', code);
-      let accessible = false;
-      try { accessible = (await getDoc(game)).exists(); } catch {}
-      if (!accessible) {
-        const member = doc(db, 'games', code, 'members', userId);
-        if (!(await getDoc(member)).exists()) await setDoc(member, { uid: userId });
-        if (!(await getDoc(game)).exists()) throw new Error('Room unavailable');
-      }
-      setHostId(null); setPlayers([]); setGameId(code);
-      localStorage.setItem('poker_current_game_id', code);
-    } catch (error) { console.error(error); alert('Could not join. Check the code; completed rooms do not accept new guests.'); }
+      const room = await roomRequest('join', { code });
+      openRoom(room.gameId);
+    } catch (error) { alert(error instanceof Error ? error.message : 'Could not join room.'); }
     finally { setJoining(false); }
   };
 
@@ -262,20 +259,25 @@ export default function App() {
       setHistory(updatedHistory);
       localStorage.setItem('poker_history', JSON.stringify(updatedHistory));
     }
-    setGameId(null);
-    localStorage.removeItem('poker_current_game_id');
-    setPlayers([]);
-    setPhase('home');
+    handleLeaveGame();
   };
 
   const handleLeaveGame = () => {
-    setGameId(null);
+    setGameId(null); setHostId(null); setRoomCode(''); setRestoreError('');
+    setReadyRoom(null); setReadyPlayers(null); setGamePhase('home');
     localStorage.removeItem('poker_current_game_id');
-    setPlayers([]);
-    setPhase('home');
+    setPlayers([]); setPhase('home');
   };
 
-  if (!userId) return <main className="p-8 text-center">{authError ? "Sign-in failed. Enable anonymous Firebase authentication and reload." : "Connecting securely..."}</main>;
+  if (!userId) return <main className="p-8 text-center">{authError ? "Could not connect securely. Reload and try again." : "Connecting securely..."}</main>;
+  if (gameId && (restoreError || readyRoom !== gameId || readyPlayers !== gameId)) return (
+    <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-4 text-center">
+      <h1 className="text-xl font-bold">{restoreError ? 'Reconnect to your room' : 'Restoring your room...'}</h1>
+      <p className="text-sm">{restoreError || 'Loading the saved game and player ledger.'}</p>
+      <button className="px-5 py-3 bg-primary text-on-primary rounded-xl" onClick={() => setRetry(n => n+1)}>Retry connection</button>
+      <button className="text-sm underline" onClick={() => { if (confirm('Leave this room on this device? The game will stay open for others.')) handleLeaveGame(); }}>Leave room</button>
+    </main>
+  );
   return (
     <div className="bg-surface text-on-surface min-h-screen pb-28 md:pb-24 font-body">
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-xl flex justify-between items-center px-4 md:px-6 py-4 border-b border-outline-variant/10">
@@ -284,11 +286,18 @@ export default function App() {
           <h1 className="text-2xl font-black text-on-surface font-serif tracking-tight italic">check</h1>
         </div>
         <div className="flex items-center gap-3">
-          {gameId && (
-            <button className="px-3 py-2 bg-primary/10 text-primary font-bold rounded-lg text-sm" onClick={async () => {
-              try { await navigator.clipboard.writeText(gameId); alert('Private room code copied. Share only with trusted participants.'); }
-              catch { window.prompt('Private room code', gameId); }
-            }}>Copy room code</button>
+          {gameId && roomCode && (
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-2 bg-primary/10 text-primary font-bold rounded-lg text-sm" onClick={async () => {
+                try { await navigator.clipboard.writeText(roomCode); alert('Room code copied.'); }
+                catch { window.prompt('Room code', roomCode); }
+              }}>Room {roomCode}</button>
+              {gamePhase !== 'results' && <button className="text-xs underline" onClick={async () => {
+                const url = new URL(window.location.href); url.searchParams.set('room', roomCode);
+                try { await navigator.clipboard.writeText(url.toString()); alert('Invite link copied. Share with trusted participants.'); }
+                catch { window.prompt('Invite link', url.toString()); }
+              }}>Invite</button>}
+            </div>
           )}
           <div className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden">
             <div className="w-full h-full bg-outline-variant/30" />
@@ -332,6 +341,7 @@ export default function App() {
             players={players}
             exchangeRate={exchangeRate}
             onComplete={handleShowResults}
+            key={gameId!}
             gameId={gameId!}
           />
           </fieldset>
