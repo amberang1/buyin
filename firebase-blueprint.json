@@ -44,13 +44,18 @@
         "hostId": {
           "type": "string",
           "description": "UID of the user who created the game"
+        },
+        "roomCode": {
+          "type": "string",
+          "pattern": "^[0-9]{6}$"
         }
       },
       "required": [
         "status",
         "exchangeRate",
         "createdAt",
-        "hostId"
+        "hostId",
+        "roomCode"
       ]
     },
     "Player": {
@@ -105,6 +110,17 @@
       "required": [
         "uid"
       ]
+    },
+    "RoomCode": {
+      "type": "object",
+      "properties": {
+        "gameId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "gameId"
+      ]
     }
   },
   "firestore": {
@@ -125,6 +141,12 @@
         "$ref": "#/entities/Member"
       },
       "description": "Read-only invited membership."
+    },
+    "/roomCodes/{code}": {
+      "schema": {
+        "$ref": "#/entities/RoomCode"
+      },
+      "description": "Server-only lookup of six-digit invitations."
     }
   }
 }
