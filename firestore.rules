@@ -38,7 +38,7 @@ service cloud.firestore {
       (request.resource.data.exchangeRate == resource.data.exchangeRate &&
        ((resource.data.status == 'setup' && request.resource.data.status == 'active') ||
         (resource.data.status == 'active' && request.resource.data.status == 'settlement') ||
-        (resource.data.status == 'settlement' && request.resource.data.status == 'results'))));
+        (resource.data.status == 'settlement' && request.resource.data.status in ['active','results']))));
    match /members/{uid} {
     allow get: if signedIn() && validRoom(gameId) && (uid == request.auth.uid || host(gameId));
     allow list: if host(gameId);
