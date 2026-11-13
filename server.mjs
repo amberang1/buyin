@@ -248,7 +248,7 @@ app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const answer = await ai.models.generateContent({
-        model: process.env.GEMINI_MODEL || 'gemini-3-flash-preview',
+        model: process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
         contents: { parts: [{ inlineData: { mimeType, data: image } }, { text: prompt }] },
         ...(mode === "stack" ? { config: { responseMimeType: "application/json" } } : {})
       });
