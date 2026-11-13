@@ -228,6 +228,30 @@ export default function App() {
     }
   };
 
+  const handleUndoTransaction = async (playerId:string, type:'buyIn'|'cashOut') => {
+    if(!gameId||!isHost)return false;
+    const expected=players.find(p=>p.id===playerId);
+    const field=type==='buyIn'?'buyIns':'cashOuts';
+    if(!expected||expected[field].length<=(type==='buyIn'?1:0))return false;
+    const last=expected[field][expected[field].length-1];
+    if(!confirm('Undo last '+(type==='buyIn'?'rebuy':'cash-out')+' for '+expected.name+' ($'+last.toFixed(2)+')?'))return false;
+    try{
+      await runTransaction(db,async tx=>{
+        const game=await tx.get(doc(db,'games',gameId));
+        const refs=players.map(p=>doc(db,'games',gameId,'players',p.id));
+        const snapshots=await Promise.all(refs.map(ref=>tx.get(ref)));
+        if(!game.exists()||game.data().status!=='active')throw new Error('Return to active play before editing entries.');
+        const current=snapshots.filter(s=>s.exists()).map(s=>({...s.data(),id:s.id} as Player));
+        const target=current.find(p=>p.id===playerId);
+        if(!samePlayer(target,expected))throw new Error('This player changed. Review the ledger and retry.');
+        const corrected={...target!,[field]:target![field].slice(0,-1)};
+        if(ledger(current.map(p=>p.id===playerId?corrected:p)).tableCents<0)throw new Error('Undo the relevant cash-out first; the table cannot have a negative balance.');
+        tx.update(doc(db,'games',gameId,'players',playerId),{[field]:corrected[field]});
+      });
+      return true;
+    }catch(error){alert(error instanceof Error?error.message:'Could not undo entry.');return false;}
+  };
+
   const handleStartSession = () => {
     if (players.length < 2 || players.some(p => !p.buyIns.length || p.buyIns.some(v => !Number.isFinite(v) || v <= 0))) { alert('Add at least two players with valid buy-ins.'); return; }
     return advancePhase('setup', 'active');
@@ -342,6 +366,7 @@ export default function App() {
           <ActivePhase 
             players={players}
             onTransaction={handleRecordTransaction}
+            onUndo={handleUndoTransaction}
             exchangeRate={exchangeRate}
             onSettle={() => { if (confirm("End play and count final chip stacks?")) handleSettleGame(); }}
           />
@@ -353,6 +378,7 @@ export default function App() {
             players={players}
             exchangeRate={exchangeRate}
             onComplete={handleShowResults}
+            onReturnToPlay={()=>{if(confirm('Return to play to correct buy-ins or cash-outs? Final chip count drafts will be retained for review.'))void advancePhase('settlement','active');}}
             key={gameId!}
             gameId={gameId!}
           />
