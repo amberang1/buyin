@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { sumCents, cashToChips, moneyCents } from '../ledger.mjs';
+import { sumCents, cashToChips, moneyCents, replaceInitialBuyIn } from '../ledger.mjs';
 import { Player, ExchangeRate } from '../types';
 import { RefreshCw, UserPlus, Users, Trash2, Play, Edit3 } from 'lucide-react';
 
@@ -46,7 +46,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
     if (!Number.isSafeInteger(cents) || cents <= 0 || cents > 10000000000 || saving) return;
     setSaving(true);
     try {
-      if (await setPlayers(prev => prev.map(p => ({ ...p, buyIns: [cents / 100] })))) {
+      if (await setPlayers(prev => prev.map(p => ({ ...p, buyIns: replaceInitialBuyIn(p.buyIns,cents/100) })))) {
         setShowBulkEdit(false);
         setBulkBuyIn('');
       }
@@ -178,7 +178,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             <div className="px-6 md:px-8 py-4 bg-primary/5 border-b border-primary/10 animate-in slide-in-from-top duration-200">
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <label className="text-[10px] uppercase font-bold tracking-wider text-primary mb-1 block">Set All Buy-ins ($)</label>
+                  <label className="text-[10px] uppercase font-bold tracking-wider text-primary mb-1 block">Set initial buy-ins ($)</label>
                   <input 
                     type="number" 
                     inputMode="decimal"
@@ -227,11 +227,11 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                         </div>
                       ) : (
                         <div>
-                          <p className="font-bold text-primary text-sm md:text-base">${(player.buyIns[0] || 0).toFixed(2)}</p>
+                          <p className="font-bold text-primary text-sm md:text-base">${(sumCents(player.buyIns)/100).toFixed(2)}</p>
                           <p className="text-[10px] text-outline text-right">{playerChips.toLocaleString()} Chips</p>
                         </div>
                       )}
-                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in for '+player.name,String(player.buyIns[0]||''));if(raw===null)return;const value=Number(raw);const cents=Number.isFinite(value)&&value>0&&value<=100000000?moneyCents(value):NaN;if(!Number.isSafeInteger(cents)||cents<=0){alert('Enter a positive amount.');return;}setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:[cents/100]}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
+                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in for '+player.name,String(player.buyIns[0]||''));if(raw===null)return;const value=Number(raw);const cents=Number.isFinite(value)&&value>0&&value<=100000000?moneyCents(value):NaN;if(!Number.isSafeInteger(cents)||cents<=0){alert('Enter a positive amount.');return;}setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:replaceInitialBuyIn(p.buyIns,cents/100)}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
                       <button aria-label={'Remove '+player.name} onClick={() => removePlayer(player.id)} disabled={saving} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
                         <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
@@ -272,4 +272,3 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
     </>
   );
 }
-

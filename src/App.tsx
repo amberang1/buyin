@@ -1,3 +1,4 @@
+import { isRoomCode } from './room-codes.mjs';
 import React, { useState, useEffect, useRef } from 'react';
 import { Phase, Player, ExchangeRate, PlayerRequest, Payment } from './types';
 import { roomScreen } from './navigation.mjs';
@@ -150,7 +151,7 @@ export default function App() {
   };
 
   const handleJoinGame = async (code: string) => {
-    if (!userId || joining || !/^\d{6}$/.test(code)) return;
+    if (!userId || joining || !isRoomCode(code)) return;
     if(gameId&&!confirm('Switch rooms on this device? Your current room will stay open.'))return;
     setJoining(true);
     try {

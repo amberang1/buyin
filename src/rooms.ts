@@ -1,3 +1,4 @@
+import { isRoomCode } from './room-codes.mjs';
 import { auth } from './firebase';
 
 export async function roomRequest(action: 'create' | 'join', payload: Record<string, unknown>): Promise<{gameId: string; roomCode: string}> {
@@ -9,7 +10,7 @@ export async function roomRequest(action: 'create' | 'join', payload: Record<str
     body: JSON.stringify(payload)
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok || !/^[a-f0-9]{32}$/.test(result.gameId || '') || !/^\d{6}$/.test(result.roomCode || '')) {
+  if (!response.ok || !/^[a-f0-9]{32}$/.test(result.gameId || '') || !isRoomCode(result.roomCode)) {
     throw new Error(result.error || 'Room service unavailable. Please retry.');
   }
   return result;

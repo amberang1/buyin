@@ -1,4 +1,5 @@
-import { mutateParticipation, participationActions, assertNoPending } from './src/participation.mjs';
+import { isRoomCode, createRoomCode } from './src/room-codes.mjs';
+import { mutateParticipation, participationActions, assertNoPending, reverseUndoneRequest } from './src/participation.mjs';
 import { validateSettings } from './src/ledger.mjs';
 import { mutateRoom } from './src/mutations.mjs';
 import 'dotenv/config';
@@ -34,7 +35,7 @@ const googleAuth = new GoogleAuth({ scopes: ['https://www.googleapis.com/auth/da
 const dbName = 'projects/' + config.projectId + '/databases/' + (config.firestoreDatabaseId || '(default)');
 const documents = 'https://firestore.googleapis.com/v1/' + dbName + '/documents';
 const fullName = name => dbName + '/documents/' + name;
-const codePattern = /^\d{6}$/;
+
 const sv = stringValue => ({ stringValue });
 const nv = n => ({ doubleValue: n });
 async function firestoreRequest(url, method = 'GET', data) {
@@ -97,11 +98,11 @@ app.post('/api/rooms/:action', express.json({ limit: '16kb' }), async (req,res) 
       if (existing) {
         if (existing.fields?.hostId?.stringValue !== uid) return res.status(409).json({ error: 'Room ID unavailable.' });
         const existingCode = existing.fields?.roomCode?.stringValue;
-        if (!codePattern.test(existingCode || '')) return res.status(409).json({ error: 'Existing room uses an older invitation format.' });
+        if (!isRoomCode(existingCode || '')) return res.status(409).json({ error: 'Existing room uses an older invitation format.' });
         return res.json({ gameId, roomCode: existingCode });
       }
-      for (let i=0; i<12; i++) {
-        const roomCode = String(randomInt(0,1000000)).padStart(6,'0');
+      for (let i=0; i<64; i++) {
+        const roomCode = createRoomCode(randomInt);
         try {
           await commit([
             writeDocument(gamePath, { hostId: sv(uid), roomCode: sv(roomCode), status: sv('setup'),
@@ -112,7 +113,7 @@ app.post('/api/rooms/:action', express.json({ limit: '16kb' }), async (req,res) 
         } catch (error) {
           if (!conflict(error)) throw error;
           const created = await readDocument(gamePath);
-          if (created?.fields?.hostId?.stringValue === uid && codePattern.test(created.fields?.roomCode?.stringValue || '')) {
+          if (created?.fields?.hostId?.stringValue === uid && isRoomCode(created.fields?.roomCode?.stringValue || '')) {
             return res.json({ gameId, roomCode: created.fields.roomCode.stringValue });
           }
           if (created) return res.status(409).json({ error: 'Room ID unavailable.' });
@@ -121,7 +122,7 @@ app.post('/api/rooms/:action', express.json({ limit: '16kb' }), async (req,res) 
       return res.status(503).json({ error: 'Could not allocate a room code. Try again.' });
     }
     const { code } = req.body || {};
-    if (typeof code !== 'string' || !codePattern.test(code)) return res.status(400).json({ error: 'Enter a six-digit room code.' });
+    if (typeof code !== 'string' || !isRoomCode(code)) return res.status(400).json({ error: 'Enter a four-digit room code (existing six-digit codes also work).' });
     const invitation = await readDocument('roomCodes/' + code);
     const gameId = invitation?.fields?.gameId?.stringValue;
     if (!gameId || !roomPattern.test(gameId)) return res.status(404).json({ error: 'Room not found or closed.' });
@@ -194,7 +195,7 @@ app.post('/api/ledger', express.json({limit:'6mb'}), async(req,res)=>{
         const payments=action==='payment'?await readCollection('payments'):[];
         let next;
         if(participationActions.includes(action))next=mutateParticipation(game,original,requests,payments,uid,action,data,requestId,new Date().toISOString());
-        else {assertNoPending(requests,action,data);next=mutateRoom(game,original,action,data);}
+        else {assertNoPending(requests,action,data);next=mutateRoom(game,original,action,data);if(action==='undo')next.requests=reverseUndoneRequest(requests,original,data,uid,new Date().toISOString());}
 
         const writes=[writeDocument('games/'+gameId,encode(next.game).mapValue.fields)];
         for(const player of next.players){

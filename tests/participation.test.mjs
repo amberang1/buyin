@@ -100,3 +100,15 @@ test('manual transactions cannot accidentally duplicate a pending guest entry',(
  assert.throws(()=>assertNoPending([{status:'requested',playerId:'a',kind:'cashOut'}],'undo',{playerId:'a'}));
  assert.doesNotThrow(()=>assertNoPending([{status:'requested',playerId:'a',kind:'buyIn'}],'record',{playerId:'b'}));
 });
+test('undoing an approved guest buy-in marks its request reversed',async()=>{
+ const {reverseUndoneRequest}=await import('../src/participation.mjs');
+ const g=game('active'),ps=[{...player(),ownerUid:'guest'},player('b')];
+ const pending=apply(g,ps,[],'guest','request',{kind:'buyIn',playerId:'a',amount:10});
+ const confirmed=apply(g,ps,pending.requests,'host','resolve',{id:'operation',status:'confirmed'});
+ assert.equal(confirmed.requests[0].entryIndex,1);
+ const data={playerId:'a',type:'buyIn',expected:confirmed.players[0]};
+ const undone=mutateRoom(g,confirmed.players,'undo',data);
+ const requests=reverseUndoneRequest(confirmed.requests,confirmed.players,data,'host','now');
+ assert.deepEqual(undone.players[0].buyIns,[20]);assert.equal(requests[0].status,'reversed');
+ assert.equal(confirmed.requests[0].status,'confirmed');
+});

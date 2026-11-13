@@ -16,7 +16,7 @@ Dedicated Firebase project: `buy-in-d6405`. Create its `(default)` Firestore dat
 
 ## Access model
 
-Anonymous Firebase authentication provides a browser-specific identity. Hosts create a six-digit room code or share an invitation link. A protected backend allocates short codes and maps them to internal random 32-character IDs; guests redeem codes for room membership and can link their own seat and submit financial requests. The browser saves the Firebase identity and current room ID locally and reloads the same room and ledger after refresh. Only the host can edit financial records, advance phases, or scan with Gemini. Table settings lock after setup.
+Anonymous Firebase authentication provides a browser-specific identity. Hosts create a four-digit room code or share an invitation link. A protected backend allocates short codes and maps them to internal random 32-character IDs; guests redeem codes for room membership and can link their own seat and submit financial requests. The browser saves the Firebase identity and current room ID locally and reloads the same room and ledger after refresh. Only the host can edit financial records, advance phases, or scan with Gemini. Table settings lock after setup.
 
 Old four-digit rooms, old local host IDs, and rooms created under the intermediate 32-character invitation scheme are not migrated. Export/backup old sessions before deployment. If a host clears storage or changes devices, the anonymous identity may be lost. Never share codes publicly.
 
@@ -43,3 +43,5 @@ Guests submit buy-in and cash-out requests only for their own seat. Requests ret
 Final results show profit/loss separately from final payouts. Host-recorded payment totals support unpaid, partly paid, fully paid and zero-payout states. They exclude earlier cash-outs, do not change financial results, and do not transfer money. Payment updates reject stale totals and overpayments. Archived history saves a snapshot of payment records.
 
 Deploy the updated frontend, backend and Firestore rules together. Request reads are limited to the host and the requesting guest; room members can read payment statuses. Every write is validated on the backend, including membership and seat ownership checks. Added tests cover permission failures, concurrent claims, duplicate confirmation, late entry, stale cash-out previews and partial payments; UI rendering tests cover restored identities, request visibility and payout labels.
+
+New rooms use four-digit codes, including leading zeros. Existing six-digit invitations remain accepted in manual join, invite links, and API responses. Short-code creation remains atomic and retries collisions without overwriting existing rooms. Internal room IDs and access rules are unchanged.

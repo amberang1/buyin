@@ -55,6 +55,7 @@ export function mutateParticipation(game, original, previousRequests, previousPa
       }else{
         if(p.ownerUid!==r.uid)fail('This request is no longer linked to the player.');
         if(r.kind==='cashOut'&&data.expectedPaidCents!==cashOutCents(players,r.amount,game.exchangeRate))fail('Cash-out payout changed. Review the updated amount and confirm again.');
+        r.entryIndex=(r.kind==='buyIn'?p.buyIns:p.cashOuts).length;
         const previousPaid=p.cashOuts.reduce((s,v)=>s+moneyCents(v),0);
         if(game.status==='setup'){
           if(r.kind!=='buyIn')fail('Cash-outs require active play.');
@@ -84,4 +85,13 @@ export function mutateParticipation(game, original, previousRequests, previousPa
 export function assertNoPending(requests,action,data){
   if(['record','undo'].includes(action)&&requests.some(r=>r.status==='requested'&&r.playerId===data.playerId&&r.kind!=='claim'))fail('Resolve this player’s pending request before adding or undoing an entry.');
   if((action==='finalize'||action==='phase'&&data.to!=='active'||action==='phase'&&data.from==='setup')&&requests.some(r=>r.status==='requested'))fail('Confirm or reject pending requests before changing the game stage.');
+}
+
+export function reverseUndoneRequest(requests,players,data,uid,now){
+ const next=structuredClone(requests),player=players.find(p=>p.id===data.playerId);
+ if(!player)return next;
+ const index=(data.type==='buyIn'?player.buyIns:player.cashOuts).length-1;
+ const request=next.find(r=>r.status==='confirmed'&&r.playerId===data.playerId&&r.kind===data.type&&r.entryIndex===index);
+ if(request){request.status='reversed';request.reason='Entry undone by host';request.resolvedAt=now;request.resolvedBy=uid;}
+ return next;
 }

@@ -106,3 +106,9 @@ export function cashOutCents(players,units,rate){
   if(raw-totals.inCents>1e-5)throw new Error('Cash-out exceeds the chips remaining on the table.');
   return Math.round(raw+1e-6)-totals.midCents;
 }
+
+export function replaceInitialBuyIn(buyIns,amount){
+  sumCents(buyIns);
+  const cents=moneyCents(amount);if(cents<=0)throw new Error('Enter a positive buy-in.');
+  return [cents/100,...buyIns.slice(1)];
+}
