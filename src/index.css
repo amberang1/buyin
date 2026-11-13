@@ -2,35 +2,35 @@
 @import "tailwindcss";
 
 @theme {
-  --color-secondary-container: #d8e7d4;
-  --color-on-surface: #2d3339;
-  --color-tertiary-container: #dad6f7;
+  --color-secondary-container: #eee3cb;
+  --color-on-surface: #202e28;
+  --color-tertiary-container: #e8d9bb;
   --color-on-tertiary-fixed-variant: #55536f;
   --color-on-tertiary-container: #4b4a65;
   --color-on-surface-variant: #596066;
   --color-on-error: #fff7f6;
-  --color-surface-tint: #3e5e95;
-  --color-surface-variant: #dde3ea;
-  --color-primary-container: #d7e2ff;
-  --color-on-secondary: #eefdea;
+  --color-surface-tint: #215746;
+  --color-surface-variant: #dfdccf;
+  --color-primary-container: #d6e8db;
+  --color-on-secondary: #fff7e9;
   --color-inverse-primary: #97b6f4;
-  --color-surface-container: #ebeef3;
+  --color-surface-container: #eae7dd;
   --color-surface-container-lowest: #ffffff;
-  --color-on-background: #2d3339;
-  --color-surface-container-low: #f2f3f7;
+  --color-on-background: #202e28;
+  --color-surface-container-low: #efede5;
   --color-outline-variant: #acb3b9;
-  --color-secondary-dim: #495748;
+  --color-secondary-dim: #60451f;
   --color-tertiary-fixed-dim: #ccc9e9;
   --color-secondary-fixed-dim: #c9d9c6;
   --color-on-error-container: #752121;
-  --color-tertiary-fixed: #dad6f7;
+  --color-tertiary-fixed: #e8d9bb;
   --color-on-tertiary: #fcf7ff;
-  --color-background: #f9f9fc;
-  --color-secondary: #556354;
-  --color-primary-dim: #315289;
-  --color-primary-fixed: #d7e2ff;
-  --color-surface-bright: #f9f9fc;
-  --color-surface-container-highest: #dde3ea;
+  --color-background: #f5f3ed;
+  --color-secondary: #72552d;
+  --color-primary-dim: #174437;
+  --color-primary-fixed: #d6e8db;
+  --color-surface-bright: #f5f3ed;
+  --color-surface-container-highest: #dfdccf;
   --color-on-secondary-fixed: #354335;
   --color-inverse-surface: #0c0e10;
   --color-on-primary-fixed: #1b3f74;
@@ -38,24 +38,44 @@
   --color-inverse-on-surface: #9c9d9f;
   --color-outline: #757b82;
   --color-on-tertiary-fixed: #393751;
-  --color-primary: #3e5e95;
-  --color-on-primary: #f7f7ff;
+  --color-primary: #215746;
+  --color-on-primary: #f8f5ec;
   --color-error-container: #fe8983;
   --color-surface-dim: #d3dbe3;
-  --color-surface-container-high: #e4e8ee;
+  --color-surface-container-high: #e5e1d5;
   --color-error: #9f403d;
   --color-primary-fixed-dim: #c1d5ff;
-  --color-secondary-fixed: #d8e7d4;
+  --color-secondary-fixed: #eee3cb;
   --color-on-secondary-fixed-variant: #515f51;
   --color-on-primary-container: #305188;
-  --color-on-secondary-container: #485547;
+  --color-on-secondary-container: #5b4223;
   --color-tertiary: #5e5c78;
   --color-tertiary-dim: #52506b;
   --color-on-primary-fixed-variant: #3b5b92;
-  --color-surface: #f9f9fc;
+  --color-surface: #f5f3ed;
 
   --font-headline: "Manrope", sans-serif;
   --font-body: "Inter", sans-serif;
   --font-label: "Inter", sans-serif;
   --font-serif: "Playfair Display", serif;
+}
+
+@layer base {
+  body { margin:0; background:#f5f3ed; color:#202e28; -webkit-font-smoothing:antialiased; }
+  button { cursor:pointer; }
+  button:disabled { cursor:not-allowed; }
+  button:focus-visible, input:focus-visible { outline:2px solid #b28a48; outline-offset:3px; }
+  input[type=number] { font-variant-numeric:tabular-nums; }
+}
+@layer components {
+  .club-card { background:#fffdf8; border:1px solid #e2ddd0; border-radius:20px; box-shadow:0 7px 28px #203c2c08; }
+  .club-hero { background:radial-gradient(ellipse at top right,#376854 0%,#1b493b 44%,#133b30 100%); color:#f8f5ec; border-radius:24px; overflow:hidden; position:relative; }
+  .club-kicker { font-size:11px; font-weight:700; letter-spacing:.19em; text-transform:uppercase; }
+  .club-button { min-height:44px; border-radius:12px; padding:12px 18px; font-weight:700; background:#215746; color:#fffdf8; }
+  .club-button:disabled { opacity:.45; }
+  .club-secondary { min-height:44px; border:1px solid #d8d3c6; border-radius:12px; padding:10px 16px; font-weight:650; color:#215746; background:#fffdf8; }
+  .club-secondary:disabled { opacity:.45; }
+  .club-input { min-height:44px; width:100%; background:#f5f3ed; border:1px solid #d8d3c6; border-radius:12px; padding:10px 12px; font-size:16px; }
+  .club-nav { padding-bottom:env(safe-area-inset-bottom,0px); height:calc(68px + env(safe-area-inset-bottom,0px)); }
+  .club-money { font-variant-numeric:tabular-nums; letter-spacing:-.04em; }
 }
