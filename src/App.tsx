@@ -218,6 +218,7 @@ export default function App() {
         }
         const value=cents/100;
         const field = type === 'buyIn' ? 'buyIns' : 'cashOuts';
+        if ((player.data()[field] as number[]).length >= 100) throw new Error('Transaction limit reached for this player.');
         tx.update(ref, { [field]: [...(player.data()[field] as number[]), value] });
       });
       return true;
