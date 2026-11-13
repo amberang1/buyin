@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Player, ExchangeRate } from '../types';
 import { Camera, Image as ImageIcon, X, Sparkles, Loader2 } from 'lucide-react';
 import { scanChips } from '../scan';
@@ -12,7 +12,13 @@ type Props = {
 
 export default function SettlementPhase({ gameId, players, exchangeRate, onComplete }: Props) {
   const [saving, setSaving] = useState(false);
-  const [finalStacks, setFinalStacks] = useState<Record<string, string>>({});
+  const draftKey = 'poker_stack_draft_' + gameId;
+  const [finalStacks, setFinalStacks] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem(draftKey) || '{}'); } catch { return {}; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(draftKey, JSON.stringify(finalStacks)); } catch { /* storage unavailable */ }
+  }, [draftKey, finalStacks]);
   const [playerPhotos, setPlayerPhotos] = useState<Record<string, string>>({});
   const [scanning, setScanning] = useState<Record<string, boolean>>({});
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -84,7 +90,7 @@ export default function SettlementPhase({ gameId, players, exchangeRate, onCompl
     });
     setSaving(true);
     try {
-      await onComplete(next);
+      if (await onComplete(next)) localStorage.removeItem(draftKey);
     } finally {
       setSaving(false);
     }
