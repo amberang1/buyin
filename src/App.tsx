@@ -135,7 +135,7 @@ export default function App() {
         id = Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
         localStorage.setItem(pendingKey, id);
       }
-      const room = await roomRequest('create', { gameId: id, exchangeRate: newRoomRate() });
+      const room = await roomRequest('create', { gameId: id, exchangeRate: isHost ? exchangeRate : newRoomRate() });
       openRoom(room.gameId);
       localStorage.removeItem(pendingKey);
     } catch (error) { alert(error instanceof Error ? error.message : 'Could not create room.'); }

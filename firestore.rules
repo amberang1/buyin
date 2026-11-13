@@ -7,6 +7,7 @@ service cloud.firestore {
   function host(id) { return signedIn() && validRoom(id) && get(gamePath(id)).data.hostId == request.auth.uid; }
   function member(id) { return signedIn() && validRoom(id) && exists(/databases/$(database)/documents/games/$(id)/members/$(request.auth.uid)); }
   function canRead(id) { return host(id) || member(id); }
+  match /hostPreferences/{uid} { allow read, write: if false; } // Backend-only personal host defaults.
   match /roomCodes/{code} { allow read, write: if false; }
   match /games/{gameId} {
    allow get: if canRead(gameId);

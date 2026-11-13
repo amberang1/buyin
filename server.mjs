@@ -1,3 +1,4 @@
+import {roomRateForHost,hostRateToRemember} from './src/host-preferences.mjs';
 import { canScanRoom } from './src/scan-policy.mjs';
 import { isRoomCode, createRoomCode } from './src/room-codes.mjs';
 import { mutateParticipation, participationActions, assertNoPending, reverseUndoneRequest, canAccessLedger } from './src/participation.mjs';
@@ -92,7 +93,8 @@ app.post('/api/rooms/:action', express.json({ limit: '16kb' }), async (req,res) 
     if (!uid) return res.status(401).json({ error: 'Could not connect securely. Reload and retry.' });
     if (!permit('user:' + action + ':' + uid, action === 'join' ? 5 : 3)) return res.status(429).json({ error: 'Too many attempts. Try again in a minute.' });
     if (action === 'create') {
-      const { gameId, exchangeRate } = req.body || {};
+      const { gameId } = req.body || {};
+      let { exchangeRate } = req.body || {};
       if (typeof gameId !== 'string' || !roomPattern.test(gameId) || !validRate(exchangeRate)) return res.status(400).json({ error: 'Invalid room settings.' });
       const gamePath = 'games/' + gameId;
       const existing = await readDocument(gamePath);
@@ -102,6 +104,9 @@ app.post('/api/rooms/:action', express.json({ limit: '16kb' }), async (req,res) 
         if (!isRoomCode(existingCode || '')) return res.status(409).json({ error: 'Existing room uses an older invitation format.' });
         return res.json({ gameId, roomCode: existingCode });
       }
+      const preferences = await readDocument('hostPreferences/' + uid);
+      const savedRate = preferences ? decode({mapValue:{fields:preferences.fields}}).exchangeRate : null;
+      exchangeRate = roomRateForHost(savedRate, exchangeRate);
       for (let i=0; i<64; i++) {
         const roomCode = createRoomCode(randomInt);
         try {
@@ -199,6 +204,9 @@ app.post('/api/ledger', express.json({limit:'6mb'}), async(req,res)=>{
         else {assertNoPending(requests,action,data);next=mutateRoom(game,original,action,action==='addPlayer'?{...data,id:requestId}:data);if(action==='undo')next.requests=reverseUndoneRequest(requests,original,data,uid,new Date().toISOString());}
 
         const writes=[writeDocument('games/'+gameId,encode(next.game).mapValue.fields)];
+        // Only a validated host settings edit updates that host's personal defaults.
+        const rememberedRate=hostRateToRemember(game,uid,action,next.game);
+        if(rememberedRate)writes.push(writeDocument('hostPreferences/'+uid,{exchangeRate:rateFields(rememberedRate)}));
         for(const player of next.players){
           if(JSON.stringify(player)!==JSON.stringify(original.find(p=>p.id===player.id)))writes.push(writeDocument('games/'+gameId+'/players/'+player.id,encode(player).mapValue.fields));
         }

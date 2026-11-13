@@ -83,7 +83,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
         <h2 className="text-3xl font-extrabold tracking-tight font-headline">{gameId ? 'Room settings' : 'Game history'}</h2>
       </div>
 
-      {gameId && <><p className="text-sm text-on-surface-variant">{canEdit ? 'Changes are saved to this room.' : 'Chip values can only be changed by the host before play starts.'}</p><fieldset disabled={!canEdit} className="min-w-0 border-0 p-5 bg-surface-container-lowest rounded-xl shadow-sm space-y-4">
+      {gameId && <><p className="text-sm text-on-surface-variant">{canEdit ? 'Changes are saved to this room and remembered for new rooms you host.' : 'Chip values can only be changed by the host before play starts.'}</p><fieldset disabled={!canEdit} className="min-w-0 border-0 p-5 bg-surface-container-lowest rounded-xl shadow-sm space-y-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <Palette className="text-primary w-5 h-5" />
@@ -93,7 +93,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
         </div>
         
         <p className="text-xs text-on-surface-variant">
-          These values belong to this room and are shared with every player. Set them before play starts. Photos detect colors only; enter each value yourself.
+          Everyone in this room uses these values. Your changes also become your defaults for new rooms you host. Other rooms keep their own settings. Photos detect colors only; enter each value yourself.
         </p>
 
         <PhotoPicker disabled={scanningColors || !canEdit} onSelect={file=>void handlePhotoUpload(file)}/>
