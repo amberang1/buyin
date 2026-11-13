@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Phase, Player, ExchangeRate, PlayerRequest, Payment } from './types';
+import { roomScreen } from './navigation.mjs';
 import ParticipationPanel from './components/ParticipationPanel';
 import HomePhase from './components/HomePhase';
 import SetupPhase from './components/SetupPhase';
@@ -7,7 +8,7 @@ import ActivePhase from './components/ActivePhase';
 import SettlementPhase from './components/SettlementPhase';
 import ResultsPhase from './components/ResultsPhase';
 import SettingsPhase from './components/SettingsPhase';
-import { Spade, Settings, Layers, LogOut } from 'lucide-react';
+import { Spade, Settings, Layers, LogOut, Home } from 'lucide-react';
 import { validateSettings } from './ledger.mjs';
 import { db, ensureAnonymousUser, projectId } from './firebase';
 import { roomRequest, ledgerRequest } from './rooms';
@@ -34,6 +35,8 @@ export default function App() {
     }).catch(error => { console.error(error); if (mounted) setAuthError(true); });
     return () => { mounted = false; };
   }, []);
+  const homeViewKey='poker_home_view_'+projectId;
+  const homeVisible=useRef(localStorage.getItem(homeViewKey)==='home');
   const [phase, setPhase] = useState<Phase>('home');
   const [gamePhase, setGamePhase] = useState<Phase>('home');
   const [gameId, setGameId] = useState<string | null>(() => {
@@ -82,7 +85,7 @@ export default function App() {
       const data = snapshot.data();
       setHostId(data.hostId); setRoomCode(data.roomCode || '');
       setGamePhase(data.status as Phase);
-      setPhase(current => current === 'settings' ? current : data.status as Phase);
+      setPhase(current => roomScreen(current,data.status,homeVisible.current) as Phase);
       setExchangeRate(data.exchangeRate);
       setReadyRoom(gameId);
     }, error => {
@@ -115,7 +118,10 @@ export default function App() {
     try{await ledgerRequest(gameId,action,data);return true;}
     catch(error){alert(error instanceof Error?error.message:'Could not save.');return false;}
   };
+  const goHome=()=>{homeVisible.current=true;try{localStorage.setItem(homeViewKey,'home');}catch{}setPhase('home');};
+  const resumeRoom=()=>{homeVisible.current=false;localStorage.removeItem(homeViewKey);setPhase(gamePhase==='home'?'setup':gamePhase);};
   const openRoom = (id: string) => {
+    homeVisible.current=false;localStorage.removeItem(homeViewKey);
     localStorage.setItem('poker_current_game_id_' + projectId, id);
     const url = new URL(window.location.href);
     url.searchParams.delete('room');
@@ -126,7 +132,8 @@ export default function App() {
   };
 
   const handleCreateGame = async () => {
-    if (!userId || joining || gameId) return;
+    if (!userId || joining) return;
+    if(gameId&&!confirm('Switch to a new room on this device? Your current room will stay open.'))return;
     setJoining(true);
     try {
       const pendingKey = 'poker_pending_room_' + userId;
@@ -143,7 +150,8 @@ export default function App() {
   };
 
   const handleJoinGame = async (code: string) => {
-    if (!userId || joining || gameId || !/^\d{6}$/.test(code)) return;
+    if (!userId || joining || !/^\d{6}$/.test(code)) return;
+    if(gameId&&!confirm('Switch rooms on this device? Your current room will stay open.'))return;
     setJoining(true);
     try {
       const room = await roomRequest('join', { code });
@@ -199,6 +207,7 @@ export default function App() {
   };
 
   const handleLeaveGame = () => {
+    homeVisible.current=false;localStorage.removeItem(homeViewKey);
     setGameId(null); setHostId(null); setRoomCode(''); setRestoreError('');
     setReadyRoom(null); setReadyPlayers(null); setGamePhase('home');
     localStorage.removeItem('poker_current_game_id_' + projectId);
@@ -206,11 +215,12 @@ export default function App() {
   };
 
   if (!userId) return <main className="p-8 text-center">{authError ? "Could not connect securely. Reload and try again." : "Connecting securely..."}</main>;
-  if (gameId && (restoreError || readyRoom !== gameId || readyPlayers !== gameId)) return (
+  if (gameId && !homeVisible.current && (restoreError || readyRoom !== gameId || readyPlayers !== gameId)) return (
     <main className="min-h-screen flex flex-col items-center justify-center p-6 gap-4 text-center">
       <h1 className="text-xl font-bold">{restoreError ? 'Reconnect to your room' : 'Restoring your room...'}</h1>
       <p className="text-sm">{restoreError || 'Loading the saved game and player ledger.'}</p>
       <button className="px-5 py-3 bg-primary text-on-primary rounded-xl" onClick={() => setRetry(n => n+1)}>Retry connection</button>
+      <button className="club-secondary" onClick={goHome}>Home — keep room saved</button>
       <button className="text-sm underline" onClick={() => { if (confirm('Leave this room on this device? The game will stay open for others.')) handleLeaveGame(); }}>Leave room</button>
     </main>
   );
@@ -244,7 +254,7 @@ export default function App() {
         {gameId&&participationError&&<div role="alert" className="club-card p-4 text-error">{participationError}<button className="club-secondary ml-2" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
         {gameId&&userId&&phase!=='home'&&phase!=='settings'&&<ParticipationPanel uid={userId} host={isHost} phase={gamePhase} players={players} requests={requests} rate={exchangeRate} ready={participationReady} onAction={participantAction}/>}
         {phase === 'home' && (
-          <><HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>
+          <>{gameId&&<section className="club-card p-5 space-y-3"><h2 className="text-xl font-bold">Your saved room{roomCode?' · '+roomCode:''}</h2><p className="text-sm text-on-surface-variant">Your room and entries are saved. Resume whenever you’re ready.</p><button className="club-button w-full" onClick={resumeRoom}>Resume room</button></section>}<HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>
         )}
         {phase === 'setup' && (
           <fieldset disabled={!isHost||settingsBusy} className="min-w-0 space-y-6 border-0 p-0">
@@ -295,7 +305,7 @@ export default function App() {
             exchangeRate={exchangeRate}
             setExchangeRate={handleSetExchangeRate}
             history={history}
-            onBack={() => setPhase(gameId ? gamePhase : 'home')}
+            onBack={() => setPhase(gameId&&!homeVisible.current ? gamePhase : 'home')}
             onLeaveGame={handleLeaveGame}
             gameId={gameId}
           />
@@ -304,8 +314,9 @@ export default function App() {
 
       {gameId && phase !== 'home' && (
         <nav className="fixed bottom-0 left-0 w-full club-nav flex justify-around items-center px-4 bg-surface-container-lowest/80 backdrop-blur-xl z-50 shadow-[0_-12px_32px_rgba(62,94,149,0.06)] border-t border-surface-container-low/15">
+          <button onClick={goHome} className="flex flex-col items-center justify-center text-on-surface-variant"><Home className="w-6 h-6 mb-1"/><span className="text-[11px] uppercase tracking-wider font-semibold">Home</span></button>
           <button 
-            onClick={() => setPhase(gamePhase)}
+            onClick={resumeRoom}
             className={`flex flex-col items-center justify-center transition-colors ${phase === 'active' || phase === 'setup' ? 'text-primary' : 'text-on-surface-variant'}`}
           >
             <Layers className="w-6 h-6 mb-1" />

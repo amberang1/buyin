@@ -54,6 +54,7 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete,
     {draftError&&<p role="alert" className="text-error">{draftError}</p>}
     {allocationError&&complete&&<p role="alert" className="text-error">{allocationError}</p>}
     {rounding.length>0&&<p className="text-sm text-primary">Fractional cents allocated to keep payouts balanced: {rounding.map(p=>p.name+' $'+p.finalStackValue.toFixed(2)).join(', ')}. Chip counts are unchanged.</p>}
+    <button className="club-secondary w-full" disabled={saving||Object.values(busy).some(Boolean)} onClick={onReturnToPlay}>Back to play / edit entries</button>
     <section><p className="club-kicker text-secondary">03 / Count &amp; reconcile</p><h2 className="font-serif text-4xl mt-2">Count the stacks.</h2><p className="text-sm text-on-surface-variant mt-2">Photograph one player’s chips, review the count, or enter the chip value manually. Lay out stacks by color in good light.</p></section>
     <section className="club-hero p-5 sm:p-7"><div className="grid grid-cols-2 gap-4"><div><p className="text-xs text-[#dae5d9]">Accounted for</p><p className="club-money text-3xl font-bold">${money(totalOut)}</p></div><div><p className="text-xs text-[#dae5d9]">Total buy-ins</p><p className="club-money text-3xl font-bold">${money(totalIn)}</p></div></div><div className="mt-4 text-xs flex items-center justify-between border-t border-white/20 pt-4"><span>{players.filter(p=>valid(p.id)).length} / {players.length} stacks entered</span><span>{difference===0&&!allocationError?'Balanced':(difference>0?'Remaining $':'Over by $')+money(Math.abs(difference))}</span></div></section>
     {players.map(p=>{const id=p.id;const review=reviews[id];let total=0;let good=true;if(review){try{total=stackTotal(review.counts,exchangeRate.chipValues);chipCents(total,exchangeRate);}catch{good=false;}}
@@ -82,7 +83,6 @@ export default function SettlementPhase({gameId,players,exchangeRate,onComplete,
     })}
     {!complete?<p className="text-sm text-on-surface-variant">Enter every final stack, including zero for an empty stack.</p>:difference!==0||!!allocationError?<div role="alert" className="club-card p-4 text-error text-sm"><strong>Check the count.</strong> The ledger is off by ${money(Math.abs(difference))}. Correct the stacks before finalizing.</div>:<p className="text-sm text-primary font-bold">All amounts balance. Ready to finalize.</p>}
     <button className="club-button w-full" disabled={blocked} onClick={submit}>{saving?'Saving results…':'Finalize ledger'}</button>
-    <button className="club-secondary w-full" disabled={saving||Object.values(busy).some(Boolean)} onClick={onReturnToPlay}>Return to play / correct entries</button>
+
   </div>;
 }
-
