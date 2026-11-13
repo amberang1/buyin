@@ -1,15 +1,16 @@
 import React, { useState, useRef } from 'react';
 import { Player, ExchangeRate } from '../types';
 import { Camera, Image as ImageIcon, X, Sparkles, Loader2 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { scanChips } from '../scan';
 
 type Props = {
+  gameId: string;
   players: Player[];
    exchangeRate: ExchangeRate;
   onComplete: (players: Player[]) => Promise<boolean>;
 };
 
-export default function SettlementPhase({ players, exchangeRate, onComplete }: Props) {
+export default function SettlementPhase({ gameId, players, exchangeRate, onComplete }: Props) {
   const [saving, setSaving] = useState(false);
   const [finalStacks, setFinalStacks] = useState<Record<string, string>>({});
   const [playerPhotos, setPlayerPhotos] = useState<Record<string, string>>({});
@@ -19,6 +20,7 @@ export default function SettlementPhase({ players, exchangeRate, onComplete }: P
   const handlePhotoUpload = (playerId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 650000 || !['image/jpeg','image/png','image/webp'].includes(file.type)) { alert('Choose a JPEG, PNG or WebP under 650 KB.'); return; }
       const reader = new FileReader();
       reader.onloadend = () => {
         setPlayerPhotos(prev => ({ ...prev, [playerId]: reader.result as string }));
@@ -34,30 +36,7 @@ export default function SettlementPhase({ players, exchangeRate, onComplete }: P
     setScanning(prev => ({ ...prev, [playerId]: true }));
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const base64Data = photoData.split(',')[1];
-      
-      const chipValuesText = Object.entries(exchangeRate.chipValues || {})
-        .map(([color, val]) => `${color}: ${val}`)
-        .join(', ');
-
-      const prompt = `Analyze this photo of poker chips. 
-      The chip denominations are: ${chipValuesText}.
-      Estimate the TOTAL VALUE of the chips in this stack based on these denominations. 
-      Return ONLY the total estimated value as a plain number. 
-      If you cannot see any chips, return 0.`;
-
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: {
-          parts: [
-            { inlineData: { mimeType: photoData.match(/^data:([^;]+);/)?.[1] || "image/jpeg", data: base64Data } },
-            { text: prompt }
-          ]
-        }
-      });
-
-      const result = response.text?.trim() || "";
+      const result = await scanChips(gameId, 'stack', photoData);
       if (!/^\d+(\.\d+)?$/.test(result) || !Number.isFinite(Number(result))) throw new Error('Invalid scan result.');
       const estimatedChips = Number(result);
       
