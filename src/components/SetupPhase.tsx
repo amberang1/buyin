@@ -7,10 +7,11 @@ type Props = {
   setExchangeRate: (rate: ExchangeRate) => void;
   players: Player[];
   setPlayers: (players: Player[] | ((prev: Player[]) => Player[])) => Promise<boolean>;
+  onChipSettings: () => void;
   onStart: () => void;
 };
 
-export default function SetupPhase({ exchangeRate, setExchangeRate, players, setPlayers, onStart }: Props) {
+export default function SetupPhase({ exchangeRate, setExchangeRate, players, setPlayers, onChipSettings, onStart }: Props) {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerBuyIn, setNewPlayerBuyIn] = useState('');
   const [bulkBuyIn, setBulkBuyIn] = useState('');
@@ -19,10 +20,10 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   const [saving, setSaving] = useState(false);
   const validInitial = newPlayerBuyIn.trim() === '' || (Number.isFinite(Number(newPlayerBuyIn)) && Number(newPlayerBuyIn) > 0 && Number.isSafeInteger(Math.round(Number(newPlayerBuyIn) * 100)) && Math.round(Number(newPlayerBuyIn) * 100) > 0);
   const handleAddPlayer = async () => {
-    if (!newPlayerName.trim() || !validInitial || saving) return;
+    if (!newPlayerName.trim() || newPlayerName.trim().length > 49 || !validInitial || saving) return;
     
     const newPlayer: Player = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       name: newPlayerName.trim(),
       buyIns: newPlayerBuyIn ? [Math.round(Number(newPlayerBuyIn) * 100) / 100] : [],
       cashOuts: [],
@@ -58,14 +59,14 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   const totalChips = totalTableValue * (exchangeRate.chips / exchangeRate.baseCurrency);
   
   const hasMissingBuyIns = players.some(p => p.buyIns.length === 0 || p.buyIns.some(v => !Number.isFinite(v) || v <= 0));
-  const canStart = !saving && players.length > 0 && !hasMissingBuyIns && exchangeRate.baseCurrency > 0 && exchangeRate.chips > 0;
+  const canStart = !saving && players.length >= 2 && !hasMissingBuyIns && exchangeRate.baseCurrency > 0 && exchangeRate.chips > 0;
 
   return (
     <>
       <section className="space-y-2">
-        <span className="text-[0.75rem] uppercase tracking-[0.1em] text-secondary font-bold">Session Configuration</span>
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-on-surface font-headline">Game Setup</h1>
-        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Define your table parameters and player game to begin the ledger calculation.</p>
+        <span className="text-[0.75rem] uppercase tracking-[0.1em] text-secondary font-bold">01 / Set the table</span>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-on-surface font-serif">Set the table.</h1>
+        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Choose the exchange rate, define chip colors and add your players.</p>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
@@ -86,11 +87,8 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                   <input 
                     type="number" 
                     inputMode="decimal"
-                    value={exchangeRate.baseCurrency || ''}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setExchangeRate({ ...exchangeRate, baseCurrency: val === '' ? 0 : parseFloat(val) });
-                    }}
+                    key={exchangeRate.baseCurrency} defaultValue={exchangeRate.baseCurrency}
+                    onBlur={e => { const val=Number(e.target.value); if(Number.isFinite(val)&&val>0&&val<=1000000)setExchangeRate({...exchangeRate,baseCurrency:val});else e.target.value=String(exchangeRate.baseCurrency); }}
                     className="bg-transparent border-none pl-5 pr-0 py-2 w-full focus:ring-0 font-bold outline-none text-base md:text-2xl"
                     placeholder="0"
                   />
@@ -101,9 +99,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
               <div className="text-outline font-bold text-xl">to</div>
               
               <div className="flex-1 text-right">
-                <div className="text-xl md:text-2xl font-bold py-2 text-on-surface">
-                  {exchangeRate.chips}
-                </div>
+                <input aria-label="Chip units" type="number" inputMode="decimal" min="1" key={exchangeRate.chips} defaultValue={exchangeRate.chips} onBlur={e=>{const val=Number(e.target.value);if(Number.isFinite(val)&&val>0&&val<=100000000)setExchangeRate({...exchangeRate,chips:val});else e.target.value=String(exchangeRate.chips);}} className="w-full bg-transparent text-right font-bold text-xl py-2"/>
                 <p className="text-[10px] uppercase font-bold tracking-wider text-outline mt-1">Chips</p>
               </div>
             </div>
@@ -115,7 +111,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             </div>
           </div>
 
-          {/* Add Competitor Card */}
+          {/* Add player Card */}
           <div className="bg-surface-container-low p-6 md:p-8 rounded-xl space-y-6">
             <div className="flex items-center gap-3">
               <UserPlus className="text-primary w-5 h-5 md:w-6 md:h-6" />
@@ -126,7 +122,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                 <label className="text-[10px] uppercase font-bold tracking-wider text-outline group-focus-within:text-primary transition-colors">Player Name</label>
                 <input 
                   type="text" 
-                  placeholder="e.g. Julian Thorne" 
+                  placeholder="e.g. Alex" maxLength={49} 
                   value={newPlayerName}
                   onChange={e => setNewPlayerName(e.target.value)}
                   className="w-full bg-transparent border-none border-b border-outline-variant/30 focus:border-primary focus:ring-0 p-0 py-2 placeholder:text-outline-variant/50 transition-all font-medium outline-none text-base"
@@ -232,7 +228,8 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                           <p className="text-[10px] text-outline text-right">{playerChips.toLocaleString()} Chips</p>
                         </div>
                       )}
-                      <button onClick={() => removePlayer(player.id)} disabled={saving} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
+                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in for '+player.name,String(player.buyIns[0]||''));if(raw===null)return;const cents=Math.round(Number(raw)*100);if(!Number.isSafeInteger(cents)||cents<=0){alert('Enter a positive amount.');return;}setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:[cents/100]}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
+                      <button aria-label={'Remove '+player.name} onClick={() => removePlayer(player.id)} disabled={saving} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
                         <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
                     </div>
