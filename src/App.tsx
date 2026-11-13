@@ -1,3 +1,4 @@
+import ChipCheck from './components/ChipCheck';
 import { isRoomCode } from './room-codes.mjs';
 import React, { useState, useEffect, useRef } from 'react';
 import { Phase, Player, ExchangeRate, PlayerRequest, Payment } from './types';
@@ -250,6 +251,7 @@ export default function App() {
       <main className={(phase === 'home' ? 'pt-12 sm:pt-20' : 'pt-24') + " px-4 md:px-6 max-w-5xl mx-auto space-y-8 md:space-y-12"}>
         {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Your requests appear below. The host confirms financial entries.</p>}
         {gameId&&participationError&&<div role="alert" className="club-card p-4 text-error">{participationError}<button className="club-secondary ml-2" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
+        {gameId&&phase!=='home'&&<ChipCheck key={gameId} gameId={gameId} rate={exchangeRate}/>}
         {gameId&&userId&&phase!=='home'&&phase!=='settings'&&<ParticipationPanel uid={userId} host={isHost} phase={gamePhase} players={players} requests={requests} rate={exchangeRate} ready={participationReady} onAction={participantAction}/>}
         {phase === 'home' && (
           <><h1 className="brand-wordmark brand-wordmark--home">Big Stack</h1>{gameId&&<section className="club-card p-5 space-y-3"><h2 className="text-xl font-bold">Your saved room{roomCode?' · '+roomCode:''}</h2><p className="text-sm text-on-surface-variant">Your room and entries are saved. Resume whenever you’re ready.</p><button className="club-button w-full" onClick={resumeRoom}>Resume room</button></section>}<HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>History &amp; settings</button></>

@@ -59,3 +59,9 @@ Initial buy-ins, bulk entry, edits, late arrivals, guest requests and rebuys now
 Run `bash scripts/map-bigstack-url.sh` from an authenticated Google Cloud Shell to request `bigstack.cloud.run` for the existing service. Availability and Preview support are verified by Google at mapping time, not by this repository. The old service address remains valid. Finish existing games on the original address: browser-local identity and drafts do not transfer automatically to a different origin. No automatic redirect is installed.
 
 `bash scripts/publish-live.sh` deploys the current checkout as a new revision, publishes rules, sends traffic to that exact revision, then requests the shorter address. It requires an authenticated Cloud Shell session. If the URL claim fails, the updated app is already live at its existing address; inspect the mapping error rather than assuming a new URL was claimed.
+
+## Check my chips during a game
+
+Hosts and joined guests have a Check my chips panel in room screens, including setup and active play. They can photograph/upload a stack, run AI counting, review warnings, edit estimated counts, and see total chip units plus the cash equivalent. This is a private estimate: photos/counts stay in component state and this path performs no ledger writes or phase transitions. It does not record a buy-in, cash-out or final stack.
+
+The new `check` scan mode verifies authentication and room access using Firestore rules, keeps existing per-user/global/concurrency limits, and returns rate context so a result cannot be priced with stale denominations. Existing settings and settlement scans retain their host-only permissions. Deploy the frontend and server together. Accuracy on real photos remains a separate validation task; hidden chips cannot be counted reliably.

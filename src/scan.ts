@@ -1,6 +1,6 @@
 import { auth } from './firebase';
 
-export async function scanChips(gameId: string, mode: 'colors' | 'stack', photo: string): Promise<string> {
+export async function scanChips(gameId: string, mode: 'colors' | 'stack' | 'check', photo: string): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('Sign in before scanning.');
   const match = photo.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
@@ -36,4 +36,3 @@ export async function prepareChipPhoto(file: File): Promise<string> {
     throw new Error('Photo is too detailed to compress. Try a closer crop.');
   } finally { URL.revokeObjectURL(url); }
 }
-

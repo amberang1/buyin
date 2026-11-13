@@ -1,3 +1,4 @@
+import { canScanRoom } from './src/scan-policy.mjs';
 import { isRoomCode, createRoomCode } from './src/room-codes.mjs';
 import { mutateParticipation, participationActions, assertNoPending, reverseUndoneRequest, canAccessLedger } from './src/participation.mjs';
 import { validateSettings } from './src/ledger.mjs';
@@ -222,7 +223,7 @@ app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
   const token = /^Bearer ([^\s]+)$/.exec(req.get('authorization') || '')?.[1];
   if (!token || token.length > 8192) return res.status(401).json({ error: 'Authentication required.' });
   const { gameId, mode, mimeType, image } = req.body || {};
-  if (typeof gameId !== 'string' || !roomPattern.test(gameId) || !['colors','stack'].includes(mode) ||
+  if (typeof gameId !== 'string' || !roomPattern.test(gameId) || !['colors','stack','check'].includes(mode) ||
       !types.has(mimeType) || typeof image !== 'string' || image.length < 16 || image.length > 4000000 ||
       image.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image)) return res.status(400).json({ error: 'Invalid scan input.' });
   try {
@@ -240,12 +241,11 @@ app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
     const room = await fetch(url, { headers: { Authorization: 'Bearer ' + token }, signal: AbortSignal.timeout(8000) });
     if (!room.ok) return res.status(403).json({ error: 'Room access denied.' });
     const fields = (await room.json()).fields || {};
-    if (fields.hostId?.stringValue !== account.localId ||
-        fields.status?.stringValue !== (mode === 'colors' ? 'setup' : 'settlement')) return res.status(403).json({ error: 'Only the host can scan in this phase.' });
+    if (!canScanRoom(mode,fields.status?.stringValue,fields.hostId?.stringValue === account.localId,true)) return res.status(403).json({ error: 'This scan is not available for your role or game stage.' });
     if (!process.env.GEMINI_API_KEY) return res.status(503).json({ error: 'AI scanning is not configured.' });
     let prompt = 'Identify the distinct main poker chip colors in this photo. Return only a comma-separated list of color names.';
     let denominations;
-    if (mode === 'stack') {
+    if (mode === 'stack' || mode === 'check') {
       const values = fields.exchangeRate?.mapValue?.fields?.chipValues?.mapValue?.fields || {};
       const entries = Object.entries(values);
       if (!entries.length || entries.length > 30 || entries.some(([name,v]) => {
@@ -263,11 +263,18 @@ app.post('/api/scan', express.json({ limit: '4100kb' }), async (req, res) => {
       const answer = await ai.models.generateContent({
         model: process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
         contents: { parts: [{ inlineData: { mimeType, data: image } }, { text: prompt }] },
-        ...(mode === "stack" ? { config: { responseMimeType: "application/json" } } : {})
+        ...((mode === "stack" || mode === "check") ? { config: { responseMimeType: "application/json" } } : {})
       });
       const raw = answer.text?.trim() || '';
-      if (mode === 'stack') {
-        try { const review = parseStackScan(raw, denominations); return res.json({ result: JSON.stringify(review) }); }
+      if (mode === 'stack' || mode === 'check') {
+        try {
+          const review = parseStackScan(raw, denominations);
+          if(mode==='check'){
+            const config=fields.exchangeRate.mapValue.fields;
+            review.context={baseCurrency:Number(config.baseCurrency.integerValue??config.baseCurrency.doubleValue),chips:Number(config.chips.integerValue??config.chips.doubleValue),chipValues:denominations};
+          }
+          return res.json({ result: JSON.stringify(review) });
+        }
         catch { return res.status(422).json({ error: 'Could not identify a reliable chip count. Try a clearer photo or enter manually.' }); }
       }
       const names = raw.split(',').map(x => x.trim());
