@@ -3,8 +3,10 @@ export type Phase = 'home' | 'setup' | 'active' | 'settlement' | 'results' | 'se
 export type Player = {
   id: string;
   name: string;
+  ownerUid?: string;
   buyIns: number[];
   cashOuts: number[];
+  cashOutChipUnits?: number[];
   finalStackValue: number;
   photoUrl?: string;
 };
@@ -14,3 +16,11 @@ export type ExchangeRate = {
   chips: number;
   chipValues: Record<string, number>;
 };
+
+
+
+export type PlayerRequest = {
+ id:string;uid:string;playerId:string;playerName:string;kind:'claim'|'buyIn'|'cashOut'|'finalStack';amount:number;
+ status:'requested'|'confirmed'|'rejected'|'reversed';createdAt:string;resolvedAt?:string;reason?:string;confirmedAmount?:number;entryIndex?:number;chipValue?:number;
+};
+export type Payment = {playerId:string;paidCents:number;updatedAt:string};

@@ -1,27 +1,71 @@
-# Buy In - Poker Ledger & Chip Scanner
+# Big Stack
 
-A real-time poker table ledger, buy-in manager, and AI chip scanner built with React, Vite, Tailwind CSS, and Firebase Firestore.
+React/Vite frontend, Firebase Authentication and Firestore, and an Express server for validated ledger writes, room access, and Gemini scans.
 
-## Features
-- **Table Stakes & Chip Configurations**: Customize chip values or scan starting stacks with Gemini AI.
-- **Bulk & Individual Buy-in Management**: Track table stakes with optional upfront buy-ins and validation.
-- **Active Game Live Reconciliation**: Track re-buys and mid-game cash-outs with instant pot calculations.
-- **End-of-Game Settlement**: Input chip stacks manually or scan them with AI to calculate net winnings/losses and final debts.
-- **Persistent Sessions**: Sessions persist locally and sync across participants via Firebase Firestore.
+## Setup and deployment
 
-## Setup & Running Locally
+Dedicated Firebase project: `buy-in-d6405`. Create its `(default)` Firestore database in production mode and enable Anonymous Authentication. The old Drift project is not used or modified by this branch. The Firebase CLI project alias retains the original deployment project ID. Existing Drift rooms are not migrated.
 
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+1. Run `npm ci`.
+2. Enable **Anonymous** sign-in in Firebase Authentication for the project in `firebase-applet-config.json`.
+3. Deploy `firestore.rules` to the **(default) Firestore database** in the Big Stack project: `firebase deploy --only firestore:rules --project buy-in-d6405`.
+4. Rotate or revoke any Gemini key previously shipped in the browser. Set a new `GEMINI_API_KEY` in server secrets (or local .env). Scanning defaults to `gemini-3.5-flash-lite`; override with the server environment variable `GEMINI_MODEL`.
+5. Run `npm run dev` (Express with Vite middleware; port 3000 by default).
+6. Give the Node server Application Default Credentials with Firestore read/write permissions (e.g. a Cloud Run runtime service account with Cloud Datastore User in this Firebase project). For local development use ADC via gcloud or a local credential file outside the repo. Never put a service account key in the client or GitHub.
+7. Run `npm run lint` and `npm run build`. For production run `npm start` and deploy the Node server over HTTPS; static-only hosting will not support room access, ledger edits, or scanning. `npm run preview` also runs this Node server against the built frontend. Never expose the development server publicly.
 
-2. **Run dev server**:
-   ```bash
-   npm run dev
-   ```
+## Access model
 
-3. **Build for production**:
-   ```bash
-   npm run build
-   ```
+Anonymous Firebase authentication provides a browser-specific identity. Hosts create a four-digit room code or share an invitation link. A protected backend allocates short codes and maps them to internal random 32-character IDs; guests redeem codes for room membership and can link their own seat and submit financial requests. The browser saves the Firebase identity and current room ID locally and reloads the same room and ledger after refresh. Only the host can edit financial records, advance phases, or scan with Gemini. Table settings lock after setup.
+
+Old four-digit rooms, old local host IDs, and rooms created under the intermediate 32-character invitation scheme are not migrated. Export/backup old sessions before deployment. If a host clears storage or changes devices, the anonymous identity may be lost. Never share codes publicly.
+
+See [security checks](docs/security-checks.md) and [ledger regression checks](docs/ledger-regression-checks.md).
+
+
+## Ledger integrity and release requirements
+
+Deploy the updated Node server, built frontend, and `firestore.rules` together. Direct browser writes to games and players are now denied. The server checks the authenticated host, reads the room and complete roster in a Firestore transaction, validates the operation, and commits the ledger and phase atomically. Repeated requests with the same operation ID are idempotent. Settings use an expected-value check so stale tabs and delayed scans cannot overwrite changes.
+
+Rooms support up to 30 players. Chip colors are unique ignoring case, limited to 30, and values are between zero and 1,000,000. All money entry paths use the same cent conversion. Fractional-cent rates retain actual chip units for new cash-outs and use cumulative rounding; final payouts allocate remaining cents deterministically by remainder and player ID. Actual chip shortages are still rejected. Older cash-outs without chip-unit records infer units from their saved cash amounts; their original fractional units cannot be reconstructed.
+
+Settlement photos, counts and unconfirmed AI reviews are stored in IndexedDB on the current device. Storage failures are shown explicitly. Archives omit photos, handle storage failure, and can be opened from History on the home screen. They remain device-local, not a cloud backup.
+
+Validation: `npm ci`, `npm run lint`, `npm test`, `npm run build`, and `node --check server.mjs`. The tests cover invalid amounts, stale edits, phase transitions, overdraws, equal rebuys, undo, finalization, and fractional rounding. Live Firebase/ADC, rules deployment and Gemini integration require deployment-environment verification.
+
+
+## Player participation and payouts
+
+A room member can create one seat in setup or during active play, with an optional initial buy-in request. Seat ownership is tied to the persisted Firebase anonymous UID, so refreshing on the same browser restores the seat. An existing host-created seat can be linked only after host approval. Changing browsers or clearing authentication storage does not restore that identity automatically.
+
+Guests submit buy-in and cash-out requests only for their own seat. Requests retain requested, confirmed or rejected status and optional rejection reasons. The host confirms money received for buy-ins, and chips received plus money paid for mid-game cash-outs. Confirmation appends financial entries and resolves the request in one transaction; retries cannot append it twice. Pending requests block starting, settlement and finalization, and must be resolved before the host manually edits that player's entries. Late arrivals can enroll while play is active, but not during settlement or after finalization.
+
+Final results show profit/loss separately from final payouts. Host-recorded payment totals support unpaid, partly paid, fully paid and zero-payout states. They exclude earlier cash-outs, do not change financial results, and do not transfer money. Payment updates reject stale totals and overpayments. Archived history saves a snapshot of payment records.
+
+Deploy the updated frontend, backend and Firestore rules together. Request reads are limited to the host and the requesting guest; room members can read payment statuses. Every write is validated on the backend, including membership and seat ownership checks. Added tests cover permission failures, concurrent claims, duplicate confirmation, late entry, stale cash-out previews and partial payments; UI rendering tests cover restored identities, request visibility and payout labels.
+
+New rooms use four-digit codes, including leading zeros. Existing six-digit invitations remain accepted in manual join, invite links, and API responses. Short-code creation remains atomic and retries collisions without overwriting existing rooms. Internal room IDs and access rules are unchanged.
+
+## One-device and shared-device usage
+
+One operator can manage the entire roster without registering a personal seat. Setup supports adding everyone; active play includes a host-only Add late player form that records the buy-in received. Players using other devices may still join and request links to those seats. A host's personal seat is optional.
+
+`tests/usage-flows.test.mjs` runs complete one-operator and multi-identity journeys through setup, rebuys, late arrivals, cash-outs, finalization and payouts, verifies identical final balances, and rejects guest direct writes and stale host edits. These use the actual shared validation/mutation functions, not live Firebase or interactive phone sessions.
+
+## Chip-based buy-in entry and shorter address
+
+Initial buy-ins, bulk entry, edits, late arrivals, guest requests and rebuys now accept total chip value, like cash-outs. Cash equivalents are shown before confirmation. Server requests explicitly mark chip units, while existing clients and stored buy-in arrays retain their currency meaning. Setup writes reject stale rates; chip requests cannot be approved after a rate change. Buy-in chip values must convert to whole cents, so cash received and chips issued can reconcile exactly.
+
+Run `bash scripts/map-bigstack-url.sh` from an authenticated Google Cloud Shell to request `bigstack.cloud.run` for the existing service. Availability and Preview support are verified by Google at mapping time, not by this repository. The old service address remains valid. Finish existing games on the original address: browser-local identity and drafts do not transfer automatically to a different origin. No automatic redirect is installed.
+
+`bash scripts/publish-live.sh` deploys the current checkout as a new revision, publishes rules, sends traffic to that exact revision, then requests the shorter address. It requires an authenticated Cloud Shell session. If the URL claim fails, the updated app is already live at its existing address; inspect the mapping error rather than assuming a new URL was claimed.
+
+## Check my chips during a game
+
+Hosts and joined guests have a Check my chips panel in room screens, including setup and active play. They can photograph/upload a stack, run AI counting, review warnings, edit estimated counts, and see total chip units plus the cash equivalent. This is a private estimate: photos/counts stay in component state and this path performs no ledger writes or phase transitions. It does not record a buy-in, cash-out or final stack.
+
+The new `check` scan mode verifies authentication and room access using Firestore rules, keeps existing per-user/global/concurrency limits, and returns rate context so a result cannot be priced with stale denominations. Existing settings and settlement scans retain their host-only permissions. Deploy the frontend and server together. Accuracy on real photos remains a separate validation task; hidden chips cannot be counted reliably.
+
+### Player flow
+
+Players see their own seat and actions before the table summary. They can enter chip buy-ins and cash-outs, use camera or uploaded photo counts, and submit final chip totals during settlement (including zero). Host confirmation records received money or completed cash-outs; confirming a final count does not mark a payout paid. Confirmed final counts can be explicitly applied to the host’s settlement draft. Earlier activity is collapsed, with pending requests visible.

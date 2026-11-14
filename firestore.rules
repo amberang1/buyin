@@ -1,67 +1,38 @@
 rules_version = '2';
-
 service cloud.firestore {
-  match /databases/{database}/documents {
-    // Helper Functions
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasOnly(fields);
-    }
-
-    function isValidExchangeRate(rate) {
-      return rate is map &&
-             rate.keys().hasAll(['baseCurrency', 'chips']) &&
-             rate.baseCurrency is number && rate.baseCurrency > 0 &&
-             rate.chips is number && rate.chips > 0;
-    }
-
-    function isValidGame(data) {
-      return hasRequiredFields(['status', 'exchangeRate', 'createdAt', 'hostId']) &&
-             hasOnlyAllowedFields(['status', 'exchangeRate', 'createdAt', 'hostId']) &&
-             data.status in ['setup', 'active', 'settlement', 'results'] &&
-             isValidExchangeRate(data.exchangeRate) &&
-             data.createdAt is string &&
-             data.hostId is string && data.hostId.size() > 0 && data.hostId.size() < 100;
-    }
-
-    function isValidPlayer(data) {
-      return hasRequiredFields(['name', 'buyIns', 'cashOuts', 'finalStackValue']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
-             data.buyIns is list && data.buyIns.size() <= 100 &&
-             data.cashOuts is list && data.cashOuts.size() <= 100 &&
-             data.finalStackValue is number && data.finalStackValue >= 0 &&
-             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() < 1048576)) && // 1MB limit for base64 photo
-             (!('userId' in data) || (data.userId is string && data.userId.size() < 100));
-    }
-
-    match /games/{gameId} {
-      // Anyone can read games (to join them)
-      allow read: if true;
-      
-      // Anyone can create a game
-      allow create: if isValidGame(request.resource.data);
-      
-      // Anyone can update a game (e.g. changing status)
-      // We ensure hostId doesn't change.
-      allow update: if isValidGame(request.resource.data) &&
-                    request.resource.data.hostId == resource.data.hostId;
-      
-      match /players/{playerId} {
-        // Anyone can read players in a game
-        allow read: if true;
-        
-        // Anyone can add a player
-        allow create: if isValidPlayer(request.resource.data);
-        
-        // Anyone can update a player (e.g. adding buy-ins)
-        allow update: if isValidPlayer(request.resource.data);
-        
-        // Anyone can delete a player
-        allow delete: if true;
-      }
-    }
+ match /databases/{database}/documents {
+  function signedIn() { return request.auth != null; }
+  function validRoom(id) { return id.matches('^[a-f0-9]{32}$'); }
+  function gamePath(id) { return /databases/$(database)/documents/games/$(id); }
+  function host(id) { return signedIn() && validRoom(id) && get(gamePath(id)).data.hostId == request.auth.uid; }
+  function member(id) { return signedIn() && validRoom(id) && exists(/databases/$(database)/documents/games/$(id)/members/$(request.auth.uid)); }
+  function canRead(id) { return host(id) || member(id); }
+  match /hostPreferences/{uid} { allow read, write: if false; } // Backend-only personal host defaults.
+  match /roomCodes/{code} { allow read, write: if false; }
+  match /games/{gameId} {
+   allow get: if canRead(gameId);
+   allow list, delete: if false;
+   allow create: if false; // Only the authenticated backend allocates rooms and codes.
+   allow update: if false; // All mutations use the validated transactional backend.
+   match /members/{uid} {
+    allow get: if signedIn() && validRoom(gameId) && (uid == request.auth.uid || host(gameId));
+    allow list: if host(gameId);
+    allow create, update: if false; // Backend verifies the short code.
+    allow delete: if host(gameId);
+   }
+   match /players/{playerId} {
+    allow read: if canRead(gameId);
+    allow create, update, delete: if false;
+   }
+   match /requests/{requestId} {
+    allow read: if host(gameId) || (member(gameId) && resource.data.uid == request.auth.uid);
+    allow write: if false;
+   }
+   match /payments/{playerId} {
+    allow read: if canRead(gameId);
+    allow write: if false;
+   }
+   match /operations/{operationId} { allow read, write: if false; }
   }
+ }
 }

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { sumCents, cashToChips, replaceInitialBuyIn, buyInChipsToCents, formatMoney } from '../ledger.mjs';
 import { Player, ExchangeRate } from '../types';
 import { RefreshCw, UserPlus, Users, Trash2, Play, Edit3 } from 'lucide-react';
 
@@ -6,60 +7,70 @@ type Props = {
   exchangeRate: ExchangeRate;
   setExchangeRate: (rate: ExchangeRate) => void;
   players: Player[];
-  setPlayers: (players: Player[] | ((prev: Player[]) => Player[])) => void;
+  setPlayers: (players: Player[] | ((prev: Player[]) => Player[])) => Promise<boolean>;
+  onChipSettings: () => void;
   onStart: () => void;
 };
 
-export default function SetupPhase({ exchangeRate, setExchangeRate, players, setPlayers, onStart }: Props) {
+export default function SetupPhase({ exchangeRate, setExchangeRate, players, setPlayers, onChipSettings, onStart }: Props) {
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerBuyIn, setNewPlayerBuyIn] = useState('');
   const [bulkBuyIn, setBulkBuyIn] = useState('');
   const [showBulkEdit, setShowBulkEdit] = useState(false);
 
-  const handleAddPlayer = () => {
-    if (!newPlayerName.trim()) return;
+  const [saving, setSaving] = useState(false);
+  let initialCents=0,bulkCents=0,initialError='',bulkError='';
+  try{if(newPlayerBuyIn.trim())initialCents=buyInChipsToCents(Number(newPlayerBuyIn),exchangeRate);}catch(e){initialError=(e as Error).message;}
+  try{if(bulkBuyIn.trim())bulkCents=buyInChipsToCents(Number(bulkBuyIn),exchangeRate);}catch(e){bulkError=(e as Error).message;}
+  const validInitial=!initialError;
+  const handleAddPlayer = async () => {
+    if (!newPlayerName.trim() || newPlayerName.trim().length > 49 || !validInitial || saving || players.length>=30) return;
     
     const newPlayer: Player = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: crypto.randomUUID(),
       name: newPlayerName.trim(),
-      buyIns: newPlayerBuyIn ? [parseFloat(newPlayerBuyIn)] : [],
+      buyIns: newPlayerBuyIn ? [initialCents / 100] : [],
       cashOuts: [],
       finalStackValue: 0,
     };
 
-    setPlayers(prev => [...prev, newPlayer]);
-    setNewPlayerName('');
-    setNewPlayerBuyIn('');
+    setSaving(true);
+    try {
+      if (await setPlayers(prev => [...prev, newPlayer])) {
+        setNewPlayerName('');
+        setNewPlayerBuyIn('');
+      }
+    } finally { setSaving(false); }
   };
 
-  const handleBulkApply = () => {
-    const val = parseFloat(bulkBuyIn);
-    if (isNaN(val)) return;
-    
-    setPlayers(prev => prev.map(p => ({
-      ...p,
-      buyIns: [val]
-    })));
-    setShowBulkEdit(false);
-    setBulkBuyIn('');
+  const handleBulkApply = async () => {
+    const cents=bulkCents;
+    if (!Number.isSafeInteger(cents) || cents <= 0 || cents > 10000000000 || saving) return;
+    setSaving(true);
+    try {
+      if (await setPlayers(prev => prev.map(p => ({ ...p, buyIns: replaceInitialBuyIn(p.buyIns,cents/100) })))) {
+        setShowBulkEdit(false);
+        setBulkBuyIn('');
+      }
+    } finally { setSaving(false); }
   };
 
-  const removePlayer = (id: string) => {
-    setPlayers(prev => prev.filter(p => p.id !== id));
+  const removePlayer = async (id: string) => {
+    if(saving)return;setSaving(true);try{await setPlayers(prev => prev.filter(p => p.id !== id));}finally{setSaving(false);}
   };
 
-  const totalTableValue = players.reduce((sum, p) => sum + (p.buyIns[0] || 0), 0);
-  const totalChips = totalTableValue * (exchangeRate.chips / exchangeRate.baseCurrency);
+  const totalTableValue = sumCents(players.flatMap(p=>p.buyIns))/100;
+  const totalChips = cashToChips(totalTableValue,exchangeRate);
   
-  const hasMissingBuyIns = players.some(p => p.buyIns.length === 0);
-  const canStart = players.length > 0 && !hasMissingBuyIns;
+  const hasMissingBuyIns = players.some(p => p.buyIns.length === 0 || p.buyIns.some(v => !Number.isFinite(v) || v <= 0));
+  const canStart = !saving && players.length >= 2 && !hasMissingBuyIns && exchangeRate.baseCurrency > 0 && exchangeRate.chips > 0;
 
   return (
     <>
       <section className="space-y-2">
-        <span className="text-[0.75rem] uppercase tracking-[0.1em] text-secondary font-bold">Session Configuration</span>
-        <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-on-surface font-headline">Game Setup</h1>
-        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Define your table parameters and player game to begin the ledger calculation.</p>
+        <span className="text-[0.75rem] uppercase tracking-[0.1em] text-secondary font-bold">Before you start</span>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-on-surface font-serif">Get the game ready</h1>
+        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Check the chip values and add the players. They can also join from their phones using the room code.</p>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
@@ -69,7 +80,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <RefreshCw className="text-primary w-5 h-5 md:w-6 md:h-6" />
-                <h3 className="text-lg font-bold tracking-tight font-headline">Table Stakes</h3>
+                <h3 className="text-lg font-bold tracking-tight font-headline">Cash and chips</h3>
               </div>
             </div>
             
@@ -80,66 +91,63 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                   <input 
                     type="number" 
                     inputMode="decimal"
-                    value={exchangeRate.baseCurrency || ''}
-                    onChange={e => {
-                      const val = e.target.value;
-                      setExchangeRate({ ...exchangeRate, baseCurrency: val === '' ? 0 : parseFloat(val) });
-                    }}
+                    key={exchangeRate.baseCurrency} defaultValue={exchangeRate.baseCurrency}
+                    onBlur={e => { const val=Number(e.target.value); if(Number.isFinite(val)&&val>0&&val<=1000000)setExchangeRate({...exchangeRate,baseCurrency:val});else e.target.value=String(exchangeRate.baseCurrency); }}
                     className="bg-transparent border-none pl-5 pr-0 py-2 w-full focus:ring-0 font-bold outline-none text-base md:text-2xl"
                     placeholder="0"
                   />
                 </div>
-                <p className="text-[10px] uppercase font-bold tracking-wider text-outline mt-1">Currency Value</p>
+                <p className="text-[10px] uppercase font-bold tracking-wider text-outline mt-1">Cash</p>
               </div>
               
               <div className="text-outline font-bold text-xl">to</div>
               
               <div className="flex-1 text-right">
-                <div className="text-xl md:text-2xl font-bold py-2 text-on-surface">
-                  {exchangeRate.chips}
-                </div>
+                <input aria-label="Chip units" type="number" inputMode="decimal" min="1" key={exchangeRate.chips} defaultValue={exchangeRate.chips} onBlur={e=>{const val=Number(e.target.value);if(Number.isFinite(val)&&val>0&&val<=100000000)setExchangeRate({...exchangeRate,chips:val});else e.target.value=String(exchangeRate.chips);}} className="w-full bg-transparent text-right font-bold text-xl py-2"/>
                 <p className="text-[10px] uppercase font-bold tracking-wider text-outline mt-1">Chips</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/10">
               <p className="text-xs text-on-surface-variant font-medium">
-                Standard rate: <span className="font-bold text-primary">${exchangeRate.baseCurrency.toFixed(2)}</span> per {exchangeRate.chips} credits.
+                This game: <span className="font-bold text-primary">${exchangeRate.baseCurrency.toFixed(2)}</span> per {exchangeRate.chips} chips.
               </p>
             </div>
           </div>
 
-          {/* Add Competitor Card */}
+          <div className="club-card p-4 flex justify-between items-center gap-3"><div><p className="font-bold text-sm">Chip values</p><p className="text-xs text-on-surface-variant">Set colors and values before scanning.</p></div><button onClick={onChipSettings} className="club-secondary text-sm">Change</button></div>
+          {/* Add player Card */}
           <div className="bg-surface-container-low p-6 md:p-8 rounded-xl space-y-6">
             <div className="flex items-center gap-3">
               <UserPlus className="text-primary w-5 h-5 md:w-6 md:h-6" />
-              <h3 className="text-lg font-bold tracking-tight font-headline">Add Competitor</h3>
+              <h3 className="text-lg font-bold tracking-tight font-headline">Add player</h3>
             </div>
             <div className="space-y-4">
               <div className="space-y-1 group">
                 <label className="text-[10px] uppercase font-bold tracking-wider text-outline group-focus-within:text-primary transition-colors">Player Name</label>
                 <input 
                   type="text" 
-                  placeholder="e.g. Julian Thorne" 
+                  placeholder="e.g. Alex" maxLength={49} 
                   value={newPlayerName}
                   onChange={e => setNewPlayerName(e.target.value)}
                   className="w-full bg-transparent border-none border-b border-outline-variant/30 focus:border-primary focus:ring-0 p-0 py-2 placeholder:text-outline-variant/50 transition-all font-medium outline-none text-base"
                 />
               </div>
               <div className="space-y-1 group">
-                <label className="text-[10px] uppercase font-bold tracking-wider text-outline group-focus-within:text-primary transition-colors">Initial Buy-In ($) - Optional</label>
+                <label className="text-[10px] uppercase font-bold tracking-wider text-outline group-focus-within:text-primary transition-colors">Initial buy-in (chip units) - optional</label>
                 <input 
                   type="number" 
                   inputMode="decimal"
                   placeholder="Leave blank to bulk enter later" 
-                  value={newPlayerBuyIn}
+                  step="any" value={newPlayerBuyIn}
                   onChange={e => setNewPlayerBuyIn(e.target.value)}
                   className="w-full bg-transparent border-none border-b border-outline-variant/30 focus:border-primary focus:ring-0 p-0 py-2 placeholder:text-outline-variant/50 transition-all font-medium outline-none text-base"
                 />
+                {newPlayerBuyIn&&<p className="text-xs text-primary">{initialError||"= "+formatMoney(initialCents)}</p>}
               </div>
               <button 
                 onClick={handleAddPlayer}
-                disabled={!newPlayerName.trim()}
+                disabled={saving || players.length>=30 || !newPlayerName.trim() || !validInitial}
                 className="w-full py-3.5 md:py-4 bg-secondary text-on-secondary font-bold rounded-lg hover:bg-secondary-dim disabled:opacity-50 transition-all flex items-center justify-center gap-2 mt-4 active:scale-95"
               >
                 <span>ADD TO GAME</span>
@@ -173,18 +181,20 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             <div className="px-6 md:px-8 py-4 bg-primary/5 border-b border-primary/10 animate-in slide-in-from-top duration-200">
               <div className="flex items-center gap-4">
                 <div className="flex-1">
-                  <label className="text-[10px] uppercase font-bold tracking-wider text-primary mb-1 block">Set All Buy-ins ($)</label>
+                  <label className="text-[10px] uppercase font-bold tracking-wider text-primary mb-1 block">Set initial buy-ins (chip units)</label>
                   <input 
                     type="number" 
                     inputMode="decimal"
                     placeholder="e.g. 200"
-                    value={bulkBuyIn}
+                    step="any" value={bulkBuyIn}
                     onChange={e => setBulkBuyIn(e.target.value)}
                     className="w-full bg-transparent border-b border-primary/30 focus:border-primary p-1 font-bold outline-none text-base"
                   />
+                  {bulkBuyIn&&<p className="text-xs text-primary">{bulkError||"= "+formatMoney(bulkCents)+" per player"}</p>}
                 </div>
                 <button 
                   onClick={handleBulkApply}
+                  disabled={saving || !!bulkError || bulkCents<=0}
                   className="px-4 py-2 bg-primary text-on-primary text-xs font-bold rounded-lg shadow-sm active:scale-95 transition-all"
                 >
                   APPLY TO ALL
@@ -200,7 +210,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
               </div>
             ) : (
               players.map((player, idx) => {
-                const playerChips = (player.buyIns[0] || 0) * (exchangeRate.chips / exchangeRate.baseCurrency);
+                const playerChips = cashToChips(sumCents(player.buyIns)/100,exchangeRate);
                 const isMissingBuyIn = player.buyIns.length === 0;
                 
                 return (
@@ -221,11 +231,12 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                         </div>
                       ) : (
                         <div>
-                          <p className="font-bold text-primary text-sm md:text-base">${(player.buyIns[0] || 0).toFixed(2)}</p>
+                          <p className="font-bold text-primary text-sm md:text-base">${(sumCents(player.buyIns)/100).toFixed(2)}</p>
                           <p className="text-[10px] text-outline text-right">{playerChips.toLocaleString()} Chips</p>
                         </div>
                       )}
-                      <button onClick={() => removePlayer(player.id)} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
+                      <button aria-label={'Edit buy-in for '+player.name} disabled={saving} onClick={async()=>{const raw=prompt('Initial buy-in in chip units for '+player.name,String(player.buyIns.length?cashToChips(player.buyIns[0],exchangeRate):''));if(raw===null)return;let cents:number;try{cents=buyInChipsToCents(Number(raw),exchangeRate);}catch(e){alert((e as Error).message);return;}if(!confirm(Number(raw)+' chip units = '+formatMoney(cents)+'. Save initial buy-in?'))return;setSaving(true);try{await setPlayers(prev=>prev.map(p=>p.id===player.id?{...p,buyIns:replaceInitialBuyIn(p.buyIns,cents/100)}:p));}finally{setSaving(false);}}} className="text-primary p-2"><Edit3 size={16}/></button>
+                      <button aria-label={'Remove '+player.name} onClick={() => removePlayer(player.id)} disabled={saving} className="opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity text-error hover:scale-110 p-2 md:p-0">
                         <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
                       </button>
                     </div>

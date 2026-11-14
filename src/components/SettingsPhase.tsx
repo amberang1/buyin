@@ -1,32 +1,30 @@
-import React, { useState, useRef } from 'react';
+import PhotoPicker from './PhotoPicker';
+import React, { useState } from 'react';
 import { ExchangeRate } from '../types';
 import { ArrowLeft, Palette, History, Calendar, Camera, Loader2, Plus, X } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import ResultsPhase from './ResultsPhase';
+import { scanChips, prepareChipPhoto } from '../scan';
 
 type Props = {
+  canEdit: boolean;
   exchangeRate: ExchangeRate;
-  setExchangeRate: (rate: ExchangeRate) => void;
+  setExchangeRate: (rate: ExchangeRate, expected?: ExchangeRate) => Promise<boolean>;
   history: any[];
   onBack: () => void;
   onLeaveGame?: () => void;
   gameId?: string | null;
 };
 
-export default function SettingsPhase({ exchangeRate, setExchangeRate, history, onBack, onLeaveGame, gameId }: Props) {
+export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, history, onBack, onLeaveGame, gameId }: Props) {
+  const [selectedGame,setSelectedGame]=useState<any>(null);
   const [newColorName, setNewColorName] = useState('');
   const [scanningColors, setScanningColors] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleAddColor = () => {
-    if (!newColorName.trim()) return;
-    setExchangeRate({
-      ...exchangeRate,
-      chipValues: {
-        ...exchangeRate.chipValues,
-        [newColorName.trim()]: 0
-      }
-    });
-    setNewColorName('');
+  const handleAddColor = async () => {
+    if(Object.keys(exchangeRate.chipValues).some(c=>c.toLowerCase()===newColorName.trim().toLowerCase())){alert("That color already exists. Edit its value instead.");return;}
+    if(Object.keys(exchangeRate.chipValues).length>=30){alert("Use at most 30 colors.");return;}
+    if (!/^[A-Za-z][A-Za-z -]{0,29}$/.test(newColorName.trim()) || ['constructor','prototype'].includes(newColorName.trim().toLowerCase())) { alert('Use a color name with letters, spaces or hyphens.'); return; }
+    if(await setExchangeRate({...exchangeRate,chipValues:{...exchangeRate.chipValues,[newColorName.trim()]:0}}))setNewColorName('');
   };
 
   const handleRemoveColor = (color: string) => {
@@ -45,33 +43,14 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
     });
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handlePhotoUpload = async (file: File) => {
+    if (!file || !gameId || !canEdit) return;
 
     setScanningColors(true);
     try {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        
-        const prompt = `Analyze this photo of poker chips. 
-        Identify all the distinct colors of the chips present in the image.
-        Return ONLY a comma-separated list of the colors you see (e.g., "Red, Blue, Green").
-        Do not include any other text or explanation.`;
-
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: {
-            parts: [
-              { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-              { text: prompt }
-            ]
-          }
-        });
-
-        const result = response.text?.trim() || "";
+      const data = await prepareChipPhoto(file);
+      {
+        const result = await scanChips(gameId, 'colors', data);
         const detectedColors = result.split(',').map(c => c.trim()).filter(c => c.length > 0);
         
         if (detectedColors.length > 0) {
@@ -79,63 +58,46 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
           detectedColors.forEach(color => {
             // Capitalize first letter
             const formattedColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
-            if (!(formattedColor in newChipValues)) {
+            if (!Object.keys(newChipValues).some(c=>c.toLowerCase()===formattedColor.toLowerCase())) {
               newChipValues[formattedColor] = 0;
             }
           });
-          setExchangeRate({ ...exchangeRate, chipValues: newChipValues });
+          await setExchangeRate({ ...exchangeRate, chipValues: newChipValues }, exchangeRate);
         }
-      };
-      reader.readAsDataURL(file);
+      }
     } catch (error) {
       console.error("AI Scan failed:", error);
       alert("Failed to scan chip colors. Please try again.");
     } finally {
       setScanningColors(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
+  if(selectedGame)return <div className="space-y-4"><button className="club-secondary" onClick={()=>setSelectedGame(null)}>Back to history</button><ResultsPhase players={selectedGame.players} payments={selectedGame.payments} onArchive={()=>setSelectedGame(null)} archiveLabel="Back to history"/></div>;
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
         <button onClick={onBack} className="p-2 hover:bg-surface-container rounded-full transition-colors">
           <ArrowLeft className="w-6 h-6" />
         </button>
-        <h2 className="text-3xl font-extrabold tracking-tight font-headline">Settings</h2>
+        <h2 className="text-3xl font-extrabold tracking-tight font-headline">{gameId ? 'Room settings' : 'Game history'}</h2>
       </div>
 
-      <div className="bg-surface-container-lowest p-5 rounded-xl shadow-sm space-y-4">
+      {gameId && <><p className="text-sm text-on-surface-variant">{canEdit ? 'Changes are saved to this room and remembered for new rooms you host.' : 'Chip values can only be changed by the host before play starts.'}</p><fieldset disabled={!canEdit} className="min-w-0 border-0 p-5 bg-surface-container-lowest rounded-xl shadow-sm space-y-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <Palette className="text-primary w-5 h-5" />
-            <h3 className="text-base font-bold tracking-tight font-headline">Chip Colors</h3>
+            <h3 className="text-base font-bold tracking-tight font-headline">Chip values</h3>
           </div>
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            disabled={scanningColors}
-            className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 text-primary rounded-lg text-xs font-bold hover:bg-primary/20 transition-all disabled:opacity-50"
-          >
-            {scanningColors ? (
-              <><Loader2 className="w-3 h-3 animate-spin" /><span>Scanning...</span></>
-            ) : (
-              <><Camera className="w-3 h-3" /><span>Scan Chips</span></>
-            )}
-          </button>
-          <input 
-            type="file" 
-            accept="image/*" 
-            capture="environment"
-            className="hidden" 
-            ref={fileInputRef}
-            onChange={handlePhotoUpload}
-          />
+
         </div>
         
         <p className="text-xs text-on-surface-variant">
-          Define the value of each chip color. You can add them manually or take a picture of your starting stack to auto-detect colors.
+          Everyone in this room uses these values. Your changes also become your defaults for new rooms you host. Other rooms keep their own settings. Photos detect colors only; enter each value yourself.
         </p>
 
+        <PhotoPicker disabled={scanningColors || !canEdit} onSelect={file=>void handlePhotoUpload(file)}/>
+        {scanningColors && <p role="status" className="text-sm">Detecting colors…</p>}
         <div className="space-y-3">
           {Object.entries(exchangeRate.chipValues).map(([color, value]) => (
             <div key={color} className="flex items-center gap-3 bg-surface-container-low p-2 md:p-3 rounded-lg border border-outline-variant/10">
@@ -143,8 +105,8 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
               <div className="w-24 relative">
                 <input 
                   type="number"
-                  value={value || ''}
-                  onChange={(e) => handleUpdateColorValue(color, e.target.value)}
+                  key={color+':'+value} defaultValue={value} min={0} max={1000000}
+                  onBlur={(e) => {const n=Number(e.target.value);if(Number.isFinite(n)&&n>=0&&n<=1000000)handleUpdateColorValue(color,e.target.value);else {alert('Use a value between 0 and 1,000,000.');e.target.value=String(value);}}}
                   placeholder="Value"
                   className="w-full bg-surface-container-lowest border border-outline-variant/30 rounded p-1.5 text-right font-bold focus:border-primary outline-none text-sm"
                 />
@@ -173,7 +135,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
             <Plus className="w-4 h-4" />
           </button>
         </div>
-      </div>
+      </fieldset></>}
 
       <div className="bg-surface-container-lowest p-5 rounded-xl shadow-sm space-y-4">
         <div className="flex items-center gap-3">
@@ -186,7 +148,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
             <p className="text-xs text-outline text-center py-4">No games archived yet.</p>
           ) : (
             history.map((game) => (
-              <div key={game.id} className="p-3 bg-surface-container-low rounded-lg flex items-center justify-between">
+              <button type="button" onClick={()=>setSelectedGame(game)} key={game.id} className="w-full text-left p-3 bg-surface-container-low rounded-lg flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-surface-container-highest rounded-lg">
                     <Calendar className="w-4 h-4 text-primary" />
@@ -203,7 +165,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
                     ${game.players.reduce((sum: number, p: any) => sum + (p.buyIns.reduce((a: number, b: number) => a + b, 0)), 0).toFixed(0)} Pot
                   </p>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -220,19 +182,7 @@ export default function SettingsPhase({ exchangeRate, setExchangeRate, history, 
         </div>
       )}
 
-      <div className="bg-surface-container-low p-5 rounded-xl space-y-3">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline">App Information</h3>
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs">
-            <span className="text-on-surface-variant">Version</span>
-            <span className="font-bold">1.3.0</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-on-surface-variant">AI Engine</span>
-            <span className="font-bold text-primary">Gemini 3 Flash</span>
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 }

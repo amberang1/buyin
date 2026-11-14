@@ -7,17 +7,35 @@
       "properties": {
         "status": {
           "type": "string",
-          "enum": ["setup", "active", "settlement", "results"],
+          "enum": [
+            "setup",
+            "active",
+            "settlement",
+            "results"
+          ],
           "description": "Current phase of the game"
         },
         "exchangeRate": {
           "type": "object",
           "properties": {
-            "baseCurrency": { "type": "number" },
-            "chips": { "type": "number" },
-            "chipColor": { "type": "string" }
+            "baseCurrency": {
+              "type": "number"
+            },
+            "chips": {
+              "type": "number"
+            },
+            "chipValues": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            }
           },
-          "required": ["baseCurrency", "chips", "chipColor"]
+          "required": [
+            "baseCurrency",
+            "chips",
+            "chipValues"
+          ]
         },
         "createdAt": {
           "type": "string",
@@ -26,42 +44,109 @@
         "hostId": {
           "type": "string",
           "description": "UID of the user who created the game"
+        },
+        "roomCode": {
+          "type": "string",
+          "pattern": "^[0-9]{6}$"
         }
       },
-      "required": ["status", "exchangeRate", "createdAt", "hostId"]
+      "required": [
+        "status",
+        "exchangeRate",
+        "createdAt",
+        "hostId",
+        "roomCode"
+      ]
     },
     "Player": {
       "title": "Player",
       "description": "A player in a poker game.",
       "type": "object",
       "properties": {
-        "name": { "type": "string" },
+        "name": {
+          "type": "string"
+        },
         "buyIns": {
           "type": "array",
-          "items": { "type": "number" }
+          "items": {
+            "type": "number"
+          }
         },
         "cashOuts": {
           "type": "array",
-          "items": { "type": "number" }
+          "items": {
+            "type": "number"
+          }
         },
-        "finalStackValue": { "type": "number" },
-        "photoUrl": { "type": "string" },
+        "finalStackValue": {
+          "type": "number"
+        },
+        "photoUrl": {
+          "type": "string"
+        },
         "userId": {
           "type": "string",
           "description": "UID of the user who claimed this player slot"
+        },
+        "id": {
+          "type": "string"
         }
       },
-      "required": ["name", "buyIns", "cashOuts", "finalStackValue"]
+      "required": [
+        "name",
+        "buyIns",
+        "cashOuts",
+        "finalStackValue",
+        "id"
+      ]
+    },
+    "Member": {
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "uid"
+      ]
+    },
+    "RoomCode": {
+      "type": "object",
+      "properties": {
+        "gameId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "gameId"
+      ]
     }
   },
   "firestore": {
     "/games/{gameId}": {
-      "schema": { "$ref": "#/entities/Game" },
+      "schema": {
+        "$ref": "#/entities/Game"
+      },
       "description": "The root game document containing settings and status."
     },
     "/games/{gameId}/players/{playerId}": {
-      "schema": { "$ref": "#/entities/Player" },
+      "schema": {
+        "$ref": "#/entities/Player"
+      },
       "description": "Players participating in the game."
+    },
+    "/games/{gameId}/members/{uid}": {
+      "schema": {
+        "$ref": "#/entities/Member"
+      },
+      "description": "Read-only invited membership."
+    },
+    "/roomCodes/{code}": {
+      "schema": {
+        "$ref": "#/entities/RoomCode"
+      },
+      "description": "Server-only lookup of six-digit invitations."
     }
   }
 }
