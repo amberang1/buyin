@@ -112,3 +112,37 @@ test('undoing an approved guest buy-in marks its request reversed',async()=>{
  assert.deepEqual(undone.players[0].buyIns,[20]);assert.equal(requests[0].status,'reversed');
  assert.equal(confirmed.requests[0].status,'confirmed');
 });
+test('players send their own final count and host approval does not mark money paid',()=>{
+ const ps=[{...player(),ownerUid:'guest'},player('b')],g=game('settlement');
+ const submitted=apply(g,ps,[],'guest','request',{kind:'finalStack',playerId:'a',amount:125});
+ assert.deepEqual(submitted.players,ps);assert.equal(submitted.requests[0].status,'requested');
+ assert.throws(()=>assertNoPending(submitted.requests,'finalize',{}));
+ const confirmed=apply(g,ps,submitted.requests,'host','resolve',{id:'operation',status:'confirmed'});
+ assert.equal(confirmed.requests[0].amount,125);assert.equal(confirmed.requests[0].status,'confirmed');
+ assert.deepEqual(confirmed.players,ps);assert.deepEqual(confirmed.payments,[]);
+ assert.throws(()=>apply(g,ps,confirmed.requests,'host','resolve',{id:'operation',status:'confirmed'}));
+});
+test('zero remaining chips can be submitted and confirmed',()=>{
+ const ps=[{...player(),ownerUid:'guest'}],g=game('settlement');
+ const submitted=apply(g,ps,[],'guest','request',{kind:'finalStack',playerId:'a',amount:0});
+ assert.equal(apply(g,ps,submitted.requests,'host','resolve',{id:'operation',status:'confirmed'}).requests[0].amount,0);
+});
+test('final counts cannot target another seat, bypass approval, or change completed games',()=>{
+ const ps=[{...player(),ownerUid:'guest'},player('b')],g=game('settlement');
+ assert.throws(()=>apply(g,ps,[],'guest','request',{kind:'finalStack',playerId:'b',amount:100}));
+ for(const amount of [-1,NaN,Infinity,100000001])assert.throws(()=>apply(g,ps,[],'guest','request',{kind:'finalStack',playerId:'a',amount}));
+ for(const status of ['setup','active','results'])assert.throws(()=>apply(game(status),ps,[],'guest','request',{kind:'finalStack',playerId:'a',amount:100}));
+ const submitted=apply(g,ps,[],'guest','request',{kind:'finalStack',playerId:'a',amount:100});
+ assert.throws(()=>apply(g,ps,submitted.requests,'guest','resolve',{id:'operation',status:'confirmed'}));
+});
+test('two players submit counts, host reviews them, and final payouts remain unpaid',()=>{
+ const ps=[{...player('a'),ownerUid:'guest-a'},{...player('b'),ownerUid:'guest-b'}],g=game('settlement');
+ let state=apply(g,ps,[],'guest-a','request',{kind:'finalStack',playerId:'a',amount:125},'count-a');
+ state=apply(g,state.players,state.requests,'guest-b','request',{kind:'finalStack',playerId:'b',amount:75},'count-b');
+ for(const id of ['count-a','count-b'])state=apply(g,state.players,state.requests,'host','resolve',{id,status:'confirmed'});
+ const stacks=Object.fromEntries(state.requests.map(r=>[r.playerId,String(r.amount)]));
+ const finished=mutateRoom(g,state.players,'finalize',{stacks,photos:{},expected:state.players,rate});
+ assert.equal(finished.game.status,'results');
+ assert.deepEqual(finished.players.map(p=>p.finalStackValue),[25,15]);
+ assert.deepEqual(state.payments,[]);
+});

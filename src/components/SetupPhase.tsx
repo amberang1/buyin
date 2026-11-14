@@ -68,9 +68,9 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
   return (
     <>
       <section className="space-y-2">
-        <span className="text-[0.75rem] uppercase tracking-[0.1em] text-secondary font-bold">01 / Set the table</span>
-        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-on-surface font-serif">Set the table.</h1>
-        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Choose the exchange rate, define chip colors and add your players. Enter total chip value, not the number of physical chips.</p>
+        <span className="text-[0.75rem] uppercase tracking-[0.1em] text-secondary font-bold">Before you start</span>
+        <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-on-surface font-serif">Get the game ready</h1>
+        <p className="text-on-surface-variant max-w-xl text-sm md:text-base">Check the chip values and add the players. They can also join from their phones using the room code.</p>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8 items-start">
@@ -80,7 +80,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
                 <RefreshCw className="text-primary w-5 h-5 md:w-6 md:h-6" />
-                <h3 className="text-lg font-bold tracking-tight font-headline">Table Stakes</h3>
+                <h3 className="text-lg font-bold tracking-tight font-headline">Cash and chips</h3>
               </div>
             </div>
             
@@ -97,7 +97,7 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
                     placeholder="0"
                   />
                 </div>
-                <p className="text-[10px] uppercase font-bold tracking-wider text-outline mt-1">Currency Value</p>
+                <p className="text-[10px] uppercase font-bold tracking-wider text-outline mt-1">Cash</p>
               </div>
               
               <div className="text-outline font-bold text-xl">to</div>
@@ -110,12 +110,12 @@ export default function SetupPhase({ exchangeRate, setExchangeRate, players, set
             
             <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/10">
               <p className="text-xs text-on-surface-variant font-medium">
-                Standard rate: <span className="font-bold text-primary">${exchangeRate.baseCurrency.toFixed(2)}</span> per {exchangeRate.chips} credits.
+                This game: <span className="font-bold text-primary">${exchangeRate.baseCurrency.toFixed(2)}</span> per {exchangeRate.chips} chips.
               </p>
             </div>
           </div>
 
-          <div className="club-card p-4 flex justify-between items-center gap-3"><div><p className="font-bold text-sm">Chip denominations</p><p className="text-xs text-on-surface-variant">Set colors and values before scanning.</p></div><button onClick={onChipSettings} className="club-secondary text-sm">Configure</button></div>
+          <div className="club-card p-4 flex justify-between items-center gap-3"><div><p className="font-bold text-sm">Chip values</p><p className="text-xs text-on-surface-variant">Set colors and values before scanning.</p></div><button onClick={onChipSettings} className="club-secondary text-sm">Change</button></div>
           {/* Add player Card */}
           <div className="bg-surface-container-low p-6 md:p-8 rounded-xl space-y-6">
             <div className="flex items-center gap-3">

@@ -65,3 +65,7 @@ Run `bash scripts/map-bigstack-url.sh` from an authenticated Google Cloud Shell 
 Hosts and joined guests have a Check my chips panel in room screens, including setup and active play. They can photograph/upload a stack, run AI counting, review warnings, edit estimated counts, and see total chip units plus the cash equivalent. This is a private estimate: photos/counts stay in component state and this path performs no ledger writes or phase transitions. It does not record a buy-in, cash-out or final stack.
 
 The new `check` scan mode verifies authentication and room access using Firestore rules, keeps existing per-user/global/concurrency limits, and returns rate context so a result cannot be priced with stale denominations. Existing settings and settlement scans retain their host-only permissions. Deploy the frontend and server together. Accuracy on real photos remains a separate validation task; hidden chips cannot be counted reliably.
+
+### Player flow
+
+Players see their own seat and actions before the table summary. They can enter chip buy-ins and cash-outs, use camera or uploaded photo counts, and submit final chip totals during settlement (including zero). Host confirmation records received money or completed cash-outs; confirming a final count does not mark a payout paid. Confirmed final counts can be explicitly applied to the host’s settlement draft. Earlier activity is collapsed, with pending requests visible.

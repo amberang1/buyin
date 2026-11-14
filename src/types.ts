@@ -20,7 +20,7 @@ export type ExchangeRate = {
 
 
 export type PlayerRequest = {
- id:string;uid:string;playerId:string;playerName:string;kind:'claim'|'buyIn'|'cashOut';amount:number;
+ id:string;uid:string;playerId:string;playerName:string;kind:'claim'|'buyIn'|'cashOut'|'finalStack';amount:number;
  status:'requested'|'confirmed'|'rejected'|'reversed';createdAt:string;resolvedAt?:string;reason?:string;confirmedAmount?:number;entryIndex?:number;chipValue?:number;
 };
 export type Payment = {playerId:string;paidCents:number;updatedAt:string};

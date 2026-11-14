@@ -1,3 +1,4 @@
+import React from 'react';
 import {useRef} from 'react';
 import {Camera,Upload} from 'lucide-react';
 type Props={disabled?:boolean;onSelect:(file:File)=>void};

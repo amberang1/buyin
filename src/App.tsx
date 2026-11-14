@@ -1,4 +1,4 @@
-import ChipCheck from './components/ChipCheck';
+import TableOverview from './components/TableOverview';
 import { isRoomCode } from './room-codes.mjs';
 import React, { useState, useEffect, useRef } from 'react';
 import { Phase, Player, ExchangeRate, PlayerRequest, Payment } from './types';
@@ -240,14 +240,14 @@ export default function App() {
       </header>}
 
       <main className={(phase === 'home' ? 'pt-12 sm:pt-20' : 'pt-24') + " px-4 md:px-6 max-w-3xl mx-auto space-y-5 md:space-y-6"}>
-        {gameId && hostId && !isHost && phase !== 'home' && <p className="text-sm text-on-surface-variant">Your requests appear below. The host confirms financial entries.</p>}
         {gameId&&participationError&&<div role="alert" className="club-card p-4 text-error">{participationError}<button className="club-secondary ml-2" onClick={()=>setRetry(n=>n+1)}>Retry</button></div>}
-        {gameId&&(phase==='active'||phase==='settlement')&&<ChipCheck key={gameId} gameId={gameId} rate={exchangeRate}/>}
-        {gameId&&userId&&phase!=='home'&&phase!=='settings'&&<ParticipationPanel uid={userId} host={isHost} phase={gamePhase} players={players} requests={requests} rate={exchangeRate} ready={participationReady} onAction={participantAction}/>}
+        {gameId&&phase!=='home'&&phase!=='settings'&&<p className="text-sm font-bold text-primary">{{setup:'Getting ready',active:'Playing',settlement:'Counting chips',results:'Game finished'}[gamePhase] || ''} · {isHost?'You’re hosting':'You’re a player'}</p>}
+        {gameId&&userId&&phase!=='home'&&phase!=='settings'&&<ParticipationPanel key={gameId!} gameId={gameId!} uid={userId} host={isHost} phase={gamePhase} players={players} requests={requests} rate={exchangeRate} ready={participationReady} onAction={participantAction}/>}
         {phase === 'home' && (
           <><h1 className="brand-wordmark brand-wordmark--home">Big Stack</h1>{gameId&&<section className="club-card p-5 space-y-3"><h2 className="text-xl font-bold">Your saved room{roomCode?' · '+roomCode:''}</h2><p className="text-sm text-on-surface-variant">Your room and entries are saved. Resume whenever you’re ready.</p><button className="club-button w-full" onClick={resumeRoom}>Resume room</button></section>}<HomePhase busy={joining} onCreateGame={handleCreateGame} onJoinGame={handleJoinGame}/><button className="club-secondary w-full" onClick={()=>setPhase('settings')}>Game history</button></>
         )}
-        {phase === 'setup' && (
+        {gameId&&!isHost&&['setup','active','settlement'].includes(phase)&&<TableOverview players={players} rate={exchangeRate} phase={gamePhase}/>}
+        {phase === 'setup' && isHost && (
           <fieldset disabled={!isHost||settingsBusy} className="min-w-0 space-y-6 border-0 p-0">
           <SetupPhase 
             exchangeRate={exchangeRate} 
@@ -259,7 +259,7 @@ export default function App() {
           />
           </fieldset>
         )}
-        {phase === 'active' && (
+        {phase === 'active' && isHost && (
           <fieldset disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <ActivePhase 
             players={players}
@@ -271,9 +271,10 @@ export default function App() {
           />
           </fieldset>
         )}
-        {phase === 'settlement' && (
+        {phase === 'settlement' && isHost && (
           <fieldset key={gameId!} disabled={!isHost} className="min-w-0 space-y-6 border-0 p-0">
           <SettlementPhase 
+            requests={requests}
             players={players}
             exchangeRate={exchangeRate}
             onComplete={handleShowResults}
@@ -315,21 +316,21 @@ export default function App() {
             <span className="text-[11px] uppercase tracking-wider font-semibold">Game</span>
           </button>
           
-          <button 
+          {isHost&&<button 
             onClick={() => gamePhase === 'active' ? (confirm('End play and count final chip stacks?') && handleSettleGame()) : setPhase('settlement')}
             disabled={!isHost || (gamePhase !== 'active' && gamePhase !== 'settlement')}
             className={`flex flex-col items-center justify-center transition-colors ${phase === 'settlement' ? 'text-primary' : 'text-on-surface-variant'} disabled:opacity-30`}
           >
             <LogOut className="w-6 h-6 mb-1" />
             <span className="text-[11px] uppercase tracking-wider font-semibold">Settle game</span>
-          </button>
+          </button>}
 
           <button 
             onClick={() => setPhase('settings')}
             className={`flex flex-col items-center justify-center transition-colors ${phase === 'settings' ? 'text-primary' : 'text-on-surface-variant'}`}
           >
             <Settings className="w-6 h-6 mb-1" />
-            <span className="text-[11px] uppercase tracking-wider font-semibold">Settings</span>
+            <span className="text-[11px] uppercase tracking-wider font-semibold">{isHost?'Settings':'Room info'}</span>
           </button>
         </nav>
       )}

@@ -64,7 +64,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
           <div className="grid grid-cols-2 gap-3 mt-4 text-sm"><div><p className="text-[#dae5d9] text-xs">Total buy-ins</p><strong>{formatMoney(totals.inCents)}</strong></div><div><p className="text-[#dae5d9] text-xs">Earlier cash-outs</p><strong>{formatMoney(totals.midCents)}</strong></div></div>
           <div className="mt-6 md:mt-8 flex items-center gap-2 text-[#dae5d9]">
             <Wallet className="w-4 h-4 md:w-5 md:h-5" />
-            <span className="text-xs md:text-sm font-semibold">Live ledger · after cash-outs</span>
+            <span className="text-xs md:text-sm font-semibold">Updated as entries are confirmed</span>
           </div>
           <div className="absolute right-0 top-0 w-32 h-full bg-gradient-to-l from-primary/5 to-transparent"></div>
         </div>
@@ -81,7 +81,7 @@ export default function ActivePhase({ players, onTransaction, exchangeRate, onSe
             className="w-full py-4 md:py-6 px-4 bg-gradient-to-br from-error to-error-dim text-on-error rounded-xl font-headline font-bold text-base md:text-lg tracking-tight hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-error/20 flex items-center justify-center gap-2"
           >
             <LogOut className="w-5 h-5" />
-            End game & settle
+            Finish game & count chips
           </button>
         </div>
       </section>

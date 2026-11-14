@@ -182,19 +182,7 @@ export default function SettingsPhase({ canEdit, exchangeRate, setExchangeRate, 
         </div>
       )}
 
-      <div className="bg-surface-container-low p-5 rounded-xl space-y-3">
-        <h3 className="text-[10px] font-bold uppercase tracking-widest text-outline">App Information</h3>
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs">
-            <span className="text-on-surface-variant">Version</span>
-            <span className="font-bold">1.3.0</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-on-surface-variant">AI Engine</span>
-            <span className="font-bold text-primary">Gemini (server-configured)</span>
-          </div>
-        </div>
-      </div>
+
     </div>
   );
 }

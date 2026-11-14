@@ -25,9 +25,9 @@ export function mutateParticipation(game, original, previousRequests, previousPa
       requests.push({id,uid,playerId:p.id,playerName:p.name,kind:'buyIn',amount,...(data.unit==='chips'?{chipValue:data.amount}:{}),rate:structuredClone(game.exchangeRate),status:'requested',createdAt:now});
     }
   }else if(action==='request'){
-    if(!open)fail('Requests are closed during settlement.');
+    if(!open&&!(game.status==='settlement'&&data.kind==='finalStack'))fail('Requests are closed for this game.');
     if(requests.length>=1000)fail('This room has reached its request limit. Ask the host to record the entry.');
-    if(!['claim','buyIn','cashOut'].includes(data.kind))fail('Invalid request.');
+    if(!['claim','buyIn','cashOut','finalStack'].includes(data.kind))fail('Invalid request.');
     if(pending.some(r=>r.uid===uid))fail('Wait for the host to resolve your previous request.');
     const p=players.find(p=>p.id===data.playerId);if(!p)fail('Seat not found.');
     if(data.kind==='claim'){
@@ -36,8 +36,10 @@ export function mutateParticipation(game, original, previousRequests, previousPa
       if(!own||own.id!==p.id)fail('You can only request transactions for your own seat.');
       if(data.kind==='cashOut'&&game.status!=='active')fail('Cash-outs are available during play.');
     }
+    if(data.kind==='finalStack'&&game.status!=='settlement')fail('Send your final count when the table is counting chips.');
     const amount=data.kind==='claim'?0:data.kind==='buyIn'?buyInEntryCents(data,game.exchangeRate)/100:data.amount;
-    if(data.kind!=='claim'&&(!Number.isFinite(amount)||amount<=0||amount>100000000))fail('Enter a valid positive amount.');
+    if(data.kind!=='claim'&&(!Number.isFinite(amount)||(data.kind==='finalStack'?amount<0:amount<=0)||amount>100000000))fail('Enter a valid positive amount.');
+    if(data.kind==='finalStack')chipsToCents(amount,game.exchangeRate);
     if(data.kind==='cashOut'&&chipsToCents(amount,game.exchangeRate)<=0)fail('Cash-out must be worth at least one cent.');
     requests.push({id,uid,playerId:p.id,playerName:p.name,kind:data.kind,amount,...(data.kind==='buyIn'&&data.unit==='chips'?{chipValue:data.amount}:{}),rate:structuredClone(game.exchangeRate),status:'requested',createdAt:now});
   }else if(action==='resolve'){
@@ -47,9 +49,13 @@ export function mutateParticipation(game, original, previousRequests, previousPa
     if(!['confirmed','rejected'].includes(data.status))fail('Choose confirm or reject.');
     if(data.reason!==undefined&&(typeof data.reason!=='string'||data.reason.length>140))fail('Keep the reason under 140 characters.');
     if(data.status==='confirmed'){
-      if(!open)fail('Return to play before confirming this request.');
+      if(!open&&!(game.status==='settlement'&&r.kind==='finalStack'))fail('Return to play before confirming this request.');
+      if(r.kind==='finalStack'&&game.status!=='settlement')fail('Review final counts when the table is counting chips.');
       const p=players.find(p=>p.id===r.playerId);if(!p)fail('This seat was removed. Reject the request.');
-      if(r.kind==='claim'){
+      if(r.kind==='finalStack'){
+        if(p.ownerUid!==r.uid)fail('This count belongs to a different seat.');
+        chipsToCents(r.amount,game.exchangeRate);
+      }else if(r.kind==='claim'){
         if(p.ownerUid||players.some(p=>p.ownerUid===r.uid))fail('This player or seat has already been linked. Reject the request.');
         p.ownerUid=r.uid;
       }else{
